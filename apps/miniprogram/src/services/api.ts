@@ -22,6 +22,6 @@ export async function loginWithWechat(){
 export function apiBaseUrl(){return BASE}
 
 export async function resolveImageUrl(key:string,spaceId=getActiveSpaceId()){
- const result=await apiRequest<{url:string}>('/api/uploads/read-url?'+new URLSearchParams({spaceId,key}).toString())
+ const result=await apiRequest<{url:string}>('/api/uploads/read-url?spaceId='+encodeURIComponent(spaceId)+'&key='+encodeURIComponent(key))
  return result.url
 }
