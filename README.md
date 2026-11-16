@@ -2,39 +2,38 @@
 
 AI 驱动的家庭料理图鉴：菜谱收藏、家庭点菜、智能配餐与采购清单。
 
-> 当前阶段：MVP 工程实现中。部署前请阅读 [WorkBuddy 部署交接](docs/WORKBUDDY_HANDOFF.md)。
-
 ## 技术栈
+- 微信小程序：Taro + React + TypeScript
+- API：Node.js 24 LTS + Fastify
+- 数据库：PostgreSQL + Prisma
+- 对象存储：S3 兼容接口（本地 MinIO；生产可用 COS / R2 / S3）
+- AI：服务端多模态模型 API
+- 业务引擎：独立 TypeScript packages
 
-- Taro + React + TypeScript（微信小程序）
-- npm workspaces monorepo
-- 独立纯 TypeScript 业务引擎：菜谱、配餐、采购
-- CloudBase 云函数/数据库/云存储适配层
-- AI Provider 抽象，模型密钥只允许配置在服务端
+## 本地启动
+1. `docker compose up -d` 启动 PostgreSQL 和 MinIO。
+2. 打开 MinIO Console（http://localhost:9001），创建 bucket：`cooking-atlas`。
+3. 复制 `apps/api/.env.example` 为 `apps/api/.env`，填写微信和 AI 配置。
+4. 根目录执行 `npm install`。
+5. 执行 `npm run db:generate`。
+6. 执行 `npm --workspace @cooking-atlas/api run db:dev -- --name init`。
+7. 执行 `npm run dev:api`，API 默认监听 http://localhost:3001。
+8. 小程序端设置 `TARO_APP_API_BASE_URL` 后执行 `npm run dev:weapp`。
 
-## 本地开发
-
-```bash
-npm install
-npm run dev:weapp
-```
-
-首次运行前复制 `.env.example` 为 `.env`。未配置 CloudBase 时，应用使用本地演示数据，方便先检查 UI；本地演示数据不代表线上持久化。
-
-## 项目结构
-
-- `apps/miniprogram`：微信小程序
-- `packages/shared`：领域类型、校验与共享常量
+## 目录
+- `apps/miniprogram`：微信小程序客户端
+- `apps/api`：Fastify API、Prisma Schema、对象存储适配
+- `packages/shared`：领域类型
 - `packages/recipe-engine`：菜谱归一化
-- `packages/meal-engine`：规则约束的家庭配餐
+- `packages/meal-engine`：家庭配餐规则
 - `packages/shopping-engine`：采购清单计算
-- `cloudfunctions`：CloudBase 云函数入口
-- `docs`：产品规格、架构、数据模型、部署交接
+- `docs`：产品规格、架构、数据模型、WorkBuddy 交接
 
-## 重要边界
+## 安全边界
+- 家庭空间是数据隔离边界；所有服务端业务操作校验成员身份。
+- 菜谱增删改、菜单确认和采购管理仅 owner 可执行。
+- 微信 AppSecret、JWT Secret、S3 凭证和 AI API Key 只存在 API 服务端。
+- 对象存储 bucket 默认私有；图片访问通过短期签名 URL。
+- 采购清单只根据已确认菜单和菜谱快照生成；未知用量不伪造精确数值。
 
-- 家庭空间是菜谱、菜单和采购数据的归属边界。
-- MVP 仅空间 owner 可以创建、修改、删除菜谱；其他成员可浏览、收藏、点菜。
-- AI 推荐优先已有菜谱；新菜必须显式标记为外部建议，不得伪装成图鉴已有菜。
-- 采购清单以已确认菜单及其菜谱快照为依据。未知用量不伪造精确数值。
-- 当前仓库提供可部署工程和 CloudBase 适配骨架；真实微信登录、CloudBase 环境、AI 服务商密钥和小程序主体资质需由部署方配置并联调。
+当前仍是待部署联调的 MVP 工程基线，真实微信登录、数据库迁移、存储桶、域名与真机验收由 WorkBuddy 完成，详见 `docs/WORKBUDDY_HANDOFF.md`。
