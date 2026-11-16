@@ -34,6 +34,12 @@ app.post('/api/auth/wechat',async(req:any,reply)=>{
  return{token:app.jwt.sign({id:u.id,openid:u.openid},{expiresIn:'30d'}),user:{id:u.id,displayName:u.displayName}}
 })
 
+app.get('/api/uploads/read-url',{preHandler:auth},async(req:any,reply)=>{
+ const u=user(req),q=z.object({spaceId:idSchema,key:z.string().min(1)}).parse(req.query)
+ await member(q.spaceId,u.id)
+ if(!q.key.startsWith('spaces/'+q.spaceId+'/'))return reply.code(403).send({error:'IMAGE_FORBIDDEN'})
+ return {url:await signedReadUrl(q.key),expiresIn:300}
+})
 app.register(async api=>{
  api.addHook('preHandler',auth)
  api.get('/api/me',async(req:any)=>{const u=user(req);return prisma.user.findUnique({where:{id:u.id},select:{id:true,displayName:true,avatarUrl:true,createdAt:true}})})
