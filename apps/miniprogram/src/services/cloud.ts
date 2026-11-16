@@ -1,17 +1,17 @@
 import Taro from '@tarojs/taro'
-
-const cloud = (Taro as any).cloud
-export function initCloud() {
-  const env = process.env.TARO_APP_CLOUDBASE_ENV_ID
-  if (cloud && env) cloud.init({ env, traceUser: true })
+import {apiRequest,apiBaseUrl,getAccessToken,getActiveSpaceId} from './api'
+export function initCloud(){/* CloudBase removed; API server is the only backend. */}
+export async function callCloud<T>(name:string,data:Record<string,unknown>):Promise<T>{
+ const spaceId=String(data.spaceId||getActiveSpaceId())
+ if(name==='recipe-import')return apiRequest<T>('/api/ai/recipe-draft','POST',{spaceId,text:data.text||'',imageKey:data.imageFileId||data.imageKey})
+ if(name==='meal-recommend')return apiRequest<T>('/api/meal-recommendations','POST',{...data,spaceId})
+ throw new Error('UNKNOWN_API_ACTION_'+name)
 }
-export async function callCloud<T>(name: string, data: Record<string, unknown>): Promise<T> {
-  if (!cloud) throw new Error('当前运行环境未提供微信云开发 API')
-  const result = await cloud.callFunction({ name, data })
-  return result.result as T
-}
-export async function uploadLocalImage(filePath: string): Promise<string> {
-  if (!cloud) throw new Error('当前运行环境未提供微信云存储 API')
-  const result = await cloud.uploadFile({ cloudPath: 'recipe-covers/' + Date.now() + '.jpg', filePath })
-  return result.fileID
+export async function uploadLocalImage(filePath:string):Promise<string>{
+ const spaceId=getActiveSpaceId()
+ if(!spaceId)throw new Error('请先创建或加入家庭空间')
+ const response=await Taro.uploadFile({url:apiBaseUrl()+'/api/uploads',filePath,name:'file',formData:{spaceId},header:{Authorization:'Bearer '+getAccessToken()}})
+ if(response.statusCode<200||response.statusCode>=300)throw new Error('IMAGE_UPLOAD_FAILED_'+response.statusCode)
+ const body=typeof response.data==='string'?JSON.parse(response.data):response.data
+ return body.key as string
 }
