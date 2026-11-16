@@ -315,6 +315,77 @@ describe('采购清单', () => {
     const r = await call('PATCH', `/api/shopping-lists/${list.id}/items/no-such-item`, {token: ownerA.token, body: {spaceId: spaceA.id, status: 'needed'}})
     expect(r.status).toBe(404)
   })
+  it('幂等生成：同一菜单不重复创建清单', async () => {
+    const before = await call('GET', `/api/shopping-lists?spaceId=${spaceA.id}`, {token: ownerA.token})
+    const r = await call('POST', `/api/meal-plans/${plan.id}/shopping-list`, {token: ownerA.token, body: {spaceId: spaceA.id}})
+    expect(r.status).toBe(200)
+    expect(r.data.id).toBe(list.id)
+    const after = await call('GET', `/api/shopping-lists?spaceId=${spaceA.id}`, {token: ownerA.token})
+    expect(after.data.length).toBe(before.data.length)
+  })
+  it('差异同步：保留同名同单位项的状态，数量按最新快照', async () => {
+    const item = list.items.find((x: any) => x.name === '番茄') || list.items[0]
+    await call('PATCH', `/api/shopping-lists/${list.id}/items/${item.id}`, {token: ownerA.token, body: {spaceId: spaceA.id, status: 'have'}})
+    const r = await call('POST', `/api/meal-plans/${plan.id}/shopping-list`, {token: ownerA.token, body: {spaceId: spaceA.id}})
+    const same = r.data.items.find((x: any) => x.id === item.id)
+    expect(same).toBeTruthy()
+    expect(same.status).toBe('have')
+    list = r.data
+  })
+  it('owner 编辑菜单（换菜）→ 快照重建 + 采购差异同步', async () => {
+    // 新建第三道菜替换 recipe2
+    const c = await call('POST', '/api/recipes', {token: ownerA.token, body: {spaceId: spaceA.id, title: `清炒时蔬-${RUN}`, ingredients: [ingredient('青菜', 300, 'g')], steps: [{content: '清炒'}]}})
+    expect(c.status).toBe(200)
+    const r = await call('PUT', `/api/meal-plans/${plan.id}`, {token: ownerA.token, body: {spaceId: spaceA.id, title: plan.title, servings: plan.servings, recipeIds: [recipe1.id, c.data.id]}})
+    expect(r.status).toBe(200)
+    expect(r.data.items.some((x: any) => x.recipeId === c.data.id)).toBe(true)
+    expect(r.data.items.some((x: any) => x.recipeId === recipe2.id)).toBe(false)
+    const lists = await call('GET', `/api/shopping-lists?spaceId=${spaceA.id}`, {token: ownerA.token})
+    const synced = lists.data.find((l: any) => l.id === list.id)
+    expect(synced.items.some((x: any) => x.name === '青菜')).toBe(true)
+    expect(synced.items.some((x: any) => x.name === '豆腐')).toBe(false)
+    plan = r.data
+  })
+  it('member 编辑菜单 → 403', async () => {
+    const r = await call('PUT', `/api/meal-plans/${plan.id}`, {token: memberA.token, body: {spaceId: spaceA.id, title: 'x', servings: 2, recipeIds: [recipe1.id]}})
+    expect(r.status).toBe(403)
+  })
+})
+
+describe('烹饪记录 cooking_logs', () => {
+  let log: any
+  it('member 提交烹饪记录（含评分与心得）', async () => {
+    const r = await call('POST', '/api/cooking-logs', {token: memberA.token, body: {spaceId: spaceA.id, recipeId: recipe1.id, mealPlanId: plan.id, notes: '家人都说好吃', rating: 5}})
+    expect(r.status).toBe(200)
+    expect(r.data.createdById).toBe(memberA.userId)
+    expect(r.data.rating).toBe(5)
+    log = r.data
+  })
+  it('列表全员可见（按时间倒序）', async () => {
+    const r = await call('GET', `/api/cooking-logs?spaceId=${spaceA.id}`, {token: ownerA.token})
+    expect(r.status).toBe(200)
+    expect(r.data.some((l: any) => l.id === log.id)).toBe(true)
+  })
+  it('按菜谱过滤', async () => {
+    const r = await call('GET', `/api/cooking-logs?spaceId=${spaceA.id}&recipeId=${recipe1.id}`, {token: memberA.token})
+    expect(r.data.every((l: any) => l.recipeId === recipe1.id)).toBe(true)
+  })
+  it('跨空间菜谱 ID → 404（IDOR）', async () => {
+    const r = await call('POST', '/api/cooking-logs', {token: ownerB.token, body: {spaceId: spaceB.id, recipeId: recipe1.id}})
+    expect([403, 404]).toContain(r.status)
+  })
+  it('照片 key 跨空间 → 403 IMAGE_FORBIDDEN', async () => {
+    const r = await call('POST', '/api/cooking-logs', {token: memberA.token, body: {spaceId: spaceA.id, recipeId: recipe1.id, photos: [`spaces/${spaceB.id}/evil.png`]}})
+    expect(r.status).toBe(403)
+  })
+  it('非成员提交 → 403', async () => {
+    const r = await call('POST', '/api/cooking-logs', {token: ownerB.token, body: {spaceId: spaceA.id, recipeId: recipe1.id}})
+    expect(r.status).toBe(403)
+  })
+  it('评分越界 → 400', async () => {
+    const r = await call('POST', '/api/cooking-logs', {token: memberA.token, body: {spaceId: spaceA.id, recipeId: recipe1.id, rating: 9}})
+    expect(r.status).toBe(400)
+  })
 })
 
 describe('上传与签名 URL', () => {
