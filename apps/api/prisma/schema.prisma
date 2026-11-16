@@ -135,5 +135,6 @@ model CookingLog {
  rating Int?
  createdById String
  space FamilySpace @relation(fields:[spaceId],references:[id],onDelete:Cascade)
+ mealPlan MealPlan? @relation(fields:[mealPlanId],references:[id],onDelete:SetNull)
  @@index([spaceId,cookedAt])
 }
