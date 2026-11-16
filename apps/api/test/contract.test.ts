@@ -432,6 +432,39 @@ describe('上传与签名 URL', () => {
   })
 })
 
+describe('试用码登录（TRIAL_LOGIN_CODE）', () => {
+  const CODE = process.env.TRIAL_LOGIN_CODE || ''
+  it('服务端未配置试用码 → 503 TRIAL_LOGIN_DISABLED 或码有效', async () => {
+    const r = await call('POST', '/api/auth/trial', {body: {code: 'whatever-code', deviceId: 'device-probe-1'}})
+    expect([503, 403]).toContain(r.status)
+    if (r.status === 503) expect(r.data.error).toBe('TRIAL_LOGIN_DISABLED')
+  })
+  it('试用码错误 → 403 TRIAL_CODE_INVALID（不泄露是否存在）', async () => {
+    const r = await call('POST', '/api/auth/trial', {body: {code: 'definitely-wrong-code', deviceId: 'device-probe-1'}})
+    expect([403, 503]).toContain(r.status)
+  })
+  it('deviceId 缺失/过短 → 400', async () => {
+    const r = await call('POST', '/api/auth/trial', {body: {code: 'x', deviceId: 'short'}})
+    expect(r.status).toBe(400)
+  })
+  ;(CODE ? it : it.skip)('正确试用码 → 签发可用 token', async () => {
+    const r = await call('POST', '/api/auth/trial', {body: {code: CODE, deviceId: 'device-alpha-0001'}})
+    expect(r.status).toBe(200)
+    expect(r.data.token).toBeTruthy()
+    const me = await call('GET', '/api/me', {token: r.data.token})
+    expect(me.status).toBe(200)
+    expect(me.data.id).toBe(r.data.user.id)
+  })
+  ;(CODE ? it : it.skip)('同码不同设备 → 两个不同账号（可验证 owner/member 双角色）', async () => {
+    const a = await call('POST', '/api/auth/trial', {body: {code: CODE, deviceId: 'device-alpha-0001'}})
+    const b = await call('POST', '/api/auth/trial', {body: {code: CODE, deviceId: 'device-beta-0002'}})
+    expect(a.data.user.id).not.toBe(b.data.user.id)
+    // 同设备重复登录幂等（同一账号）
+    const again = await call('POST', '/api/auth/trial', {body: {code: CODE, deviceId: 'device-alpha-0001'}})
+    expect(again.data.user.id).toBe(a.data.user.id)
+  })
+})
+
 describe('AI 草稿', () => {
   it('未配置 AI provider → 503（不崩溃）', async () => {
     const r = await call('POST', '/api/ai/recipe-draft', {token: ownerA.token, body: {spaceId: spaceA.id, text: '番茄炒蛋'}})

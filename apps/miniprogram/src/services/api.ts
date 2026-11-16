@@ -25,6 +25,29 @@ export async function loginWithWechat(){
  return result.user
 }
 
+const TRIAL_CODE_KEY='cooking-atlas-trial-code'
+const DEVICE_KEY='cooking-atlas-device-id'
+
+/** 稳定的设备标识：同一台手机上同一试用码 → 同一账号；换手机 → 不同账号 */
+export function getDeviceId(){
+ let id=Taro.getStorageSync(DEVICE_KEY)
+ if(!id){
+  id='d'+Math.random().toString(36).slice(2)+Date.now().toString(36)
+  Taro.setStorageSync(DEVICE_KEY,id)
+ }
+ return String(id)
+}
+export function getTrialCode(){return Taro.getStorageSync(TRIAL_CODE_KEY)||''}
+export function clearTrialCode(){Taro.removeStorageSync(TRIAL_CODE_KEY)}
+
+/** 试用码登录（服务端未开启 TRIAL_LOGIN_CODE 时返回 503 TRIAL_LOGIN_DISABLED） */
+export async function loginWithTrialCode(code:string){
+ const result=await apiRequest<{token:string;user:{id:string;displayName?:string}}>('/api/auth/trial','POST',{code:code.trim(),deviceId:getDeviceId()})
+ Taro.setStorageSync(TOKEN_KEY,result.token)
+ Taro.setStorageSync(TRIAL_CODE_KEY,code.trim())
+ return result.user
+}
+
 /** multipart 上传：spaceId 作为表单字段，服务端校验成员权限并返回空间隔离的 object key */
 export async function uploadImage(filePath:string,spaceId:string):Promise<{key:string;contentType:string;size:number}>{
  const token=getAccessToken()
@@ -56,6 +79,9 @@ export type SpaceMembership={id:string;role:'owner'|'member';status:string;space
 /**
  * 会话编排：登录 → 拉取我的空间 → 无空间则自动创建 → 持久化 activeSpaceId。
  * 返回当前激活空间与角色；已有 activeSpaceId 且仍在成员列表时优先沿用。
+ *
+ * 登录顺序：已存 token → 微信登录；微信未配置(503)且存有试用码 → 试用码登录；
+ * 都没有则抛 TRIAL_CODE_REQUIRED，由页面提示输入试用码。
  */
 export async function ensureSession():Promise<{user:{id:string;displayName?:string};space:{id:string;name:string;inviteCode?:string};role:'owner'|'member'}>{
  let user:{id:string;displayName?:string}
@@ -63,7 +89,7 @@ export async function ensureSession():Promise<{user:{id:string;displayName?:stri
   user=await apiRequest<{id:string;displayName?:string}>('/api/me')
  }catch(e:any){
   if(e?.statusCode!==401)throw e
-  user=await loginWithWechat()
+  user=await loginAny()
  }
  let memberships=await apiRequest<SpaceMembership[]>('/api/spaces')
  let active=getActiveSpaceId()
@@ -86,8 +112,23 @@ export async function ensureSession():Promise<{user:{id:string;displayName?:stri
  return{user,space:{...mine.space,inviteCode},role:mine.role}
 }
 
-/** 凭邀请码加入家庭空间，成功后切换 activeSpaceId */
-export async function joinSpaceByCode(inviteCode:string){
+/**
+ * 登录策略：微信优先；微信未配置时用已存试用码自动登录；
+ * 两者都不可用则抛 TRIAL_CODE_REQUIRED（页面据此提示输入试用码）。
+ */
+export async function loginAny(){
+ try{
+  return await loginWithWechat()
+ }catch(e:any){
+  const msg=String(e?.message||e)
+  if(msg!=='WECHAT_AUTH_NOT_CONFIGURED')throw e
+  const code=getTrialCode()
+  if(!code)throw Object.assign(new Error('TRIAL_CODE_REQUIRED'),{statusCode:401})
+  return await loginWithTrialCode(code)
+ }
+}
+
+/** 凭邀请码加入家庭空间，成功后切换 activeSpaceId */export async function joinSpaceByCode(inviteCode:string){
  const space=await apiRequest<{id:string;name:string}>('/api/spaces/join','POST',{inviteCode:inviteCode.trim().toUpperCase()})
  setActiveSpaceId(space.id)
  return space

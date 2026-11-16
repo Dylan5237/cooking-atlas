@@ -6,6 +6,9 @@ export default defineConfig({
   cacheDir: './node_modules/.vitest',
   test: {
     include: ['test/**/*.test.ts'],
-    environment: 'node'
+    environment: 'node',
+    // 本机并行 worker 写 SSR 缓存会触发 EPERM（系统 Temp 访问受限），
+    // 表现为「部分测试文件静默不被收集」；串行执行可稳定跑全量。
+    fileParallelism: false
   }
 })

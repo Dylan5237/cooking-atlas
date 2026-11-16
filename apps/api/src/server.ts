@@ -5,7 +5,7 @@ import multipart from '@fastify/multipart'
 import rateLimit from '@fastify/rate-limit'
 import {PrismaClient} from '@prisma/client'
 import {z} from 'zod'
-import {randomBytes} from 'node:crypto'
+import {randomBytes,createHash,timingSafeEqual} from 'node:crypto'
 import {env} from './env.js'
 import {objectKey,putObject,getObjectBuffer,signedReadUrl} from './storage.js'
 import {recommendMeal} from '@cooking-atlas/meal-engine'
@@ -42,6 +42,8 @@ function sniffImage(buffer:Buffer){return IMAGE_SIGNATURES.find(s=>s.test(buffer
 // AI prompt injection 防线：用户输入一律视为数据。过滤常见指令注入标记；system 提示声明忽略嵌入指令。
 const INJECTION_PATTERNS=[/忽略(以上|之前|上面|所有).{0,12}(指令|提示|规则|设定)/,/ignore\s+(all\s+)?(previous|above|prior)\s+(instructions|prompts)/i,/(you\s+are\s+now|act\s+as|pretend\s+to\s+be)\s+/i,/^(system|assistant)\s*[:：]/im,/<\/?(system|instructions?)>/i]
 function sanitizeAiText(text:string){return INJECTION_PATTERNS.some(p=>p.test(text))?'':text}
+// 定长摘要后比较，避免按字符串长度/前缀泄露试用码
+function safeEqual(a:string,b:string){return timingSafeEqual(createHash('sha256').update(a).digest(),createHash('sha256').update(b).digest())}
 
 app.get('/health',async()=>({ok:true,service:'cooking-atlas-api'}))
 // 自动化契约测试专用登录：三重闸门（显式开关 + 非 production + 测试密钥），生产环境不可达。
@@ -53,9 +55,21 @@ if(env.AUTH_TEST_MODE&&env.NODE_ENV!=='production'&&env.AUTH_TEST_SECRET){
   return{token:app.jwt.sign({id:u.id,openid:u.openid},{expiresIn:'1h'}),user:{id:u.id,displayName:u.displayName}}
  })
 }
+// 试用期登录：仅在服务端显式配置 TRIAL_LOGIN_CODE 时可用（未配置即 503，等同不存在）。
+// 同一试用码 + 不同 deviceId 生成不同账号，便于两台手机分别验证 owner / member。
+// 局限：带外置信的临时入口，正式接微信登录后应删除 TRIAL_LOGIN_CODE 关闭。
+app.post('/api/auth/trial',{config:{rateLimit:{max:10,timeWindow:'1 minute',hook:'preHandler',keyGenerator:(req:any)=>'trial:'+String(req.body?.deviceId||req.ip)}}},async(req:any,reply)=>{
+ if(!env.TRIAL_LOGIN_CODE)return reply.code(503).send({error:'TRIAL_LOGIN_DISABLED'})
+ const b=z.object({code:z.string().min(1).max(64),deviceId:z.string().min(8).max(64),displayName:z.string().max(20).optional()}).parse(req.body)
+ if(!safeEqual(b.code,env.TRIAL_LOGIN_CODE))return reply.code(403).send({error:'TRIAL_CODE_INVALID'})
+ const openid='trial:'+createHash('sha256').update(env.TRIAL_LOGIN_CODE+':'+b.deviceId).digest('hex').slice(0,24)
+ const u=await prisma.user.upsert({where:{openid},create:{openid,displayName:b.displayName||'试用用户'},update:b.displayName?{displayName:b.displayName}:{}})
+ return{token:app.jwt.sign({id:u.id,openid:u.openid},{expiresIn:'7d'}),user:{id:u.id,displayName:u.displayName}}
+})
 app.post('/api/auth/wechat',async(req:any,reply)=>{
  const b=z.object({code:z.string().min(1),displayName:z.string().optional()}).parse(req.body)
  if(!env.WECHAT_APP_ID||!env.WECHAT_APP_SECRET)return reply.code(503).send({error:'WECHAT_AUTH_NOT_CONFIGURED'})
+
  const qs=new URLSearchParams({appid:env.WECHAT_APP_ID,secret:env.WECHAT_APP_SECRET,js_code:b.code,grant_type:'authorization_code'})
  const wx=await fetch('https://api.weixin.qq.com/sns/jscode2session?'+qs),result:any=await wx.json()
  if(!result.openid||result.errcode)return reply.code(401).send({error:'WECHAT_LOGIN_FAILED',detail:result.errmsg})

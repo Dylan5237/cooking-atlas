@@ -2,7 +2,7 @@ import React,{useEffect,useMemo,useState}from'react'
 import{View,Text,Input,Textarea,Button,Image,Canvas}from'@tarojs/components'
 import Taro,{useShareAppMessage}from'@tarojs/taro'
 import{repository,isDemoMode}from'../../services/repository'
-import{ensureSession,joinSpaceByCode,uploadImage,resolveImageUrl,getActiveSpaceId,apiRequest}from'../../services/api'
+import{ensureSession,joinSpaceByCode,uploadImage,resolveImageUrl,getActiveSpaceId,apiRequest,loginWithTrialCode}from'../../services/api'
 import{startRecording,stopRecording,transcribeRecording,isRecording}from'../../services/recorder'
 import{CARD_W,layoutCard,drawCard,getCardCanvas,loadCoverImage,exportCardImage,saveCardToAlbum}from'../../services/card'
 import type{Recipe,Ingredient}from'@cooking-atlas/shared'
@@ -39,6 +39,9 @@ export default function Index(){
  // 家庭空间
  const[joinCode,setJoinCode]=useState('')
  const[busy,setBusy]=useState(false)
+ // 试用码登录（未接微信 AppID 时的入口，服务端未开启则不可用）
+ const[trialRequired,setTrialRequired]=useState(false)
+ const[trialCode,setTrialCode]=useState('')
  // 制作记录
  const[logRecipe,setLogRecipe]=useState<Recipe|null>(null)
  const[logNotes,setLogNotes]=useState('')
@@ -62,9 +65,31 @@ export default function Index(){
   if(isDemoMode()){setLoading(false);return}
   ensureSession()
    .then(async s=>{setSession(s);await repository.refresh();refresh();if(s.role==='owner')await repository.refreshRequests().catch(()=>{});refresh()})
-   .catch(e=>Taro.showToast({title:'登录失败：'+errText(e),icon:'none'}))
+   .catch(e=>{
+    if(errText(e)==='TRIAL_CODE_REQUIRED'){setTrialRequired(true);return}
+    Taro.showToast({title:'登录失败：'+errText(e),icon:'none'})
+   })
    .finally(()=>setLoading(false))
  },[])
+
+ // 试用码登录：成功后走完整会话编排（拉空间 / 无则建 / 取角色）
+ const submitTrialCode=async()=>{
+  if(!trialCode.trim()){Taro.showToast({title:'请输入试用码',icon:'none'});return}
+  try{
+   setBusy(true);setLoading(true)
+   await loginWithTrialCode(trialCode)
+   const s=await ensureSession()
+   setSession(s);setTrialRequired(false);setTrialCode('')
+   await repository.refresh();refresh()
+   if(s.role==='owner')await repository.refreshRequests().catch(()=>{})
+   refresh();Taro.showToast({title:'已进入「'+s.space.name+'」',icon:'success'})
+  }catch(e){
+   const msg=errText(e)
+   if(msg==='TRIAL_LOGIN_DISABLED')Taro.showModal({title:'试用入口未开启',content:'服务端未配置试用码，请提供小程序 AppID/AppSecret 或联系管理员。',showCancel:false})
+   else if(msg==='TRIAL_CODE_INVALID')Taro.showToast({title:'试用码不正确',icon:'none'})
+   else Taro.showToast({title:'登录失败：'+msg,icon:'none'})
+  }finally{setBusy(false);setLoading(false)}
+ }
 
  // 列表封面：object key → 签名 URL（300s 时效，页面生命周期内缓存）
  useEffect(()=>{
@@ -295,6 +320,12 @@ export default function Index(){
   </View>
   <View className='tabs'>{(['atlas','order','shopping','profile']as Tab[]).map((x,i)=><Text key={x} className={'tab '+(tab===x?'active':'')} onClick={()=>setTab(x)}>{['图鉴','点菜','采购','我的'][i]}</Text>)}</View>
   {loading&&<View className='empty'>正在登录并加载家庭数据…</View>}
+  {trialRequired&&!loading&&<View className='panel'>
+   <Text className='heading'>输入试用码进入</Text>
+   <Text className='muted'>当前环境未接入微信登录，试用期用试用码进入。两台手机用同一个试用码会得到两个不同账号，可分别验证掌勺者与家人。</Text>
+   <Input className='field' placeholder='试用码' value={trialCode} onInput={e=>setTrialCode(e.detail.value)}/>
+   <Button className='primary' loading={busy} onClick={submitTrialCode}>进入试用</Button>
+  </View>}
 
   {tab==='atlas'&&<View>
    <Text className='heading'>我的料理收藏</Text>

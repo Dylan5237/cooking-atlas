@@ -20,6 +20,9 @@ const schema=z.object({
  RATE_LIMIT_MAX:z.coerce.number().int().positive().default(120),
  // 仅供自动化契约测试的登录旁路：必须显式开启、非 production、且携带测试密钥。
  AUTH_TEST_MODE:z.preprocess(v=>v==='true',z.boolean().default(false)),
- AUTH_TEST_SECRET:z.preprocess(emptyToUndefined,z.string().min(16).optional())
+ AUTH_TEST_SECRET:z.preprocess(emptyToUndefined,z.string().min(16).optional()),
+ // 试用期登录：未接入微信 AppID 时的临时入口。设置即启用，删除该变量即彻底关闭。
+ // 同一试用码 + 不同设备 = 不同账号，便于用两台手机验证 owner/member 双角色流程。
+ TRIAL_LOGIN_CODE:z.preprocess(emptyToUndefined,z.string().min(8).max(64).optional())
 })
 export const env=schema.parse(process.env)
