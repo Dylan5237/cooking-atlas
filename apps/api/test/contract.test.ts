@@ -125,6 +125,19 @@ describe('家庭空间与成员', () => {
     const r = await call('GET', `/api/recipes?spaceId=${spaceA.id}`, {token: ownerB.token})
     expect(r.status).toBe(403)
   })
+  it('owner 可取回邀请码', async () => {
+    const r = await call('GET', `/api/spaces/${spaceA.id}/invite-code`, {token: ownerA.token})
+    expect(r.status).toBe(200)
+    expect(r.data.inviteCode).toBe(spaceA.inviteCode)
+  })
+  it('member 取邀请码 → 403（不泄露）', async () => {
+    const r = await call('GET', `/api/spaces/${spaceA.id}/invite-code`, {token: memberA.token})
+    expect(r.status).toBe(403)
+  })
+  it('非成员取邀请码 → 403（IDOR）', async () => {
+    const r = await call('GET', `/api/spaces/${spaceA.id}/invite-code`, {token: ownerB.token})
+    expect(r.status).toBe(403)
+  })
 })
 
 describe('菜谱 CRUD 与权限', () => {
