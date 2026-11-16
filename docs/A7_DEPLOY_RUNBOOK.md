@@ -11,11 +11,13 @@
 | --- | --- |
 | API 地址 | `http://43.139.159.100.nip.io`（80 端口 vhost，借 nip.io 通配 DNS 指到 CVM，未动现有 80/443 站点） |
 | 试用码 | `atlas-a4755a`（CVM `deploy/.env` 的 `TRIAL_LOGIN_CODE`，留空即关闭入口） |
-| 小程序源码 | `apps/miniprogram`，`project.config.json` 的 `urlCheck=false`（跳过合法域名校验） |
+| 小程序源码 | `apps/miniprogram`，`project.config.json` 的 `appid=wxc79bbed1d3614ec2`（小程序测试号）、`urlCheck=false`（跳过合法域名校验） |
 | 编译产物 | `apps/miniprogram/dist/`，`dist/common.js` 已注入上述 API 地址 |
 | 登录方式 | 页面底部「输入试用码」→ 设备号自动生成；两台手机用同一码会得到两个账号，可验证 owner/member |
 
-**操作步骤**：微信开发者工具 → 导入项目 → 目录选 `apps/miniprogram`（AppID 选「测试号」或保留 `touristappid`）→ 详情 → 本地设置 → 勾选「不校验合法域名…」→ 编译。真机调试时手机端也要打开调试模式。AI 与 STT 未配置会 503 降级为手动录入，不影响其余流程。
+**操作步骤**：微信开发者工具 → 导入项目 → 目录选 `apps/miniprogram`（已配小程序测试号 `wxc79bbed1d3614ec2`）→ 详情 → 本地设置 → 勾选「不校验合法域名…」→ 编译。点工具栏「预览」生成二维码 → 手机微信扫码 → 右上角「…」→ 打开调试 → 即可连试用后端。AI 与 STT 未配置会 503 降级为手动录入，不影响其余流程。
+
+**AppID 类型坑（2026-11-16 实测）**：`touristappid` 游客号能编译但 `appLaunch timeout`、无法生成预览码；**公众号 AppID（如订阅号）报 `invalid app type` 完全不可用**——公众号 ≠ 小程序，类型不通用。可用的是微信公众平台 `mp.weixin.qq.com` → 扫码 → 选择「小程序测试号」登录后，在「开发管理 → 开发设置」里的 AppID。CLI `preview` 验证成功的标志：输出 `Using AppID: wx...` + `Preview` 且无 error。
 
 **安全边界**：`TRIAL_LOGIN_CODE` 是显式开关，未配置时 `/api/auth/trial` 返回 503；按 deviceId 限流 10/min；token 7 天；CVM 上 api/postgres/minio 仍只绑 127.0.0.1，公网仅经 nginx vhost 的 `/api/*` 与 `/health` 透传。现有站点回归验证 `http(s)://43.139.159.100/` 均 200 / 471B，与改前一致。
 
