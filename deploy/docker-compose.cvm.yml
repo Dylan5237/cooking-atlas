@@ -1,0 +1,69 @@
+# CVM 部署覆盖文件：与根目录 docker-compose.yml 叠加使用
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.cvm.yml up -d --build
+# 安全约定：所有端口仅绑定 127.0.0.1，公网访问一律经 nginx HTTPS 反代（A7 阶段配置）。
+# 不触碰机器上已有的 iris / rustdesk / collab 容器与卷。
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+  minio:
+    ports: !override
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cooking}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in deploy/.env}
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    container_name: cooking-atlas-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cooking}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 2; done;
+      mc mb --ignore-existing local/cooking-atlas;
+      echo bucket-ready;
+      "
+    restart: "no"
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: cooking-atlas-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3001"
+      DATABASE_URL: postgresql://cooking:${POSTGRES_PASSWORD}@postgres:5432/cooking_atlas?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env}
+      WECHAT_APP_ID: ${WECHAT_APP_ID:-}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cooking-atlas
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-cooking}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_FORCE_PATH_STYLE: "true"
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      CORS_ORIGIN: "*"
+      MAX_UPLOAD_MB: "10"
+    # 生产用 migrate deploy（交接文档硬性要求，禁止 migrate dev）
+    command: >
+      sh -c "npm --workspace @cooking-atlas/api run db:migrate &&
+             npm --workspace @cooking-atlas/api run start"

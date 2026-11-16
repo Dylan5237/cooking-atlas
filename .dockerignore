@@ -5,3 +5,5 @@ node_modules
 .github
 **/dist
 coverage
+deploy/.env
+deploy/*.tar.gz
