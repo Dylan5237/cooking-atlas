@@ -37,6 +37,12 @@ export default function Index(){
  // 家庭空间
  const[joinCode,setJoinCode]=useState('')
  const[busy,setBusy]=useState(false)
+ // 制作记录
+ const[logRecipe,setLogRecipe]=useState<Recipe|null>(null)
+ const[logNotes,setLogNotes]=useState('')
+ const[logRating,setLogRating]=useState(5)
+ const[logPhotoKey,setLogPhotoKey]=useState('')
+ const[logPhotoPreview,setLogPhotoPreview]=useState('')
  // 封面签名 URL 缓存（object key → 短期签名 URL）
  const[covers,setCovers]=useState<Record<string,string>>({})
 
@@ -191,6 +197,29 @@ export default function Index(){
   Taro.setClipboardData({data:session.space.inviteCode})
  }
 
+ const chooseLogPhoto=async()=>{
+  try{
+   const res=await Taro.chooseImage({count:1,sizeType:['compressed'],sourceType:['album','camera']})
+   const local=res.tempFilePaths[0]
+   if(isDemoMode()){setLogPhotoPreview(local);return}
+   Taro.showLoading({title:'上传中'})
+   const up=await uploadImage(local,getActiveSpaceId())
+   setLogPhotoKey(up.key);setLogPhotoPreview(local)
+   Taro.hideLoading()
+  }catch(e){Taro.hideLoading();Taro.showToast({title:'上传失败：'+errText(e),icon:'none'})}
+ }
+
+ const saveLog=async()=>{
+  if(!logRecipe)return
+  if(isDemoMode()){Taro.showToast({title:'演示模式不支持记录',icon:'none'});return}
+  try{
+   setBusy(true)
+   await repository.addCookingLog({recipeId:logRecipe.id,mealPlanId:store.plan?.id,notes:logNotes,rating:logRating,photos:logPhotoKey?[logPhotoKey]:[]})
+   setLogRecipe(null);setLogNotes('');setLogRating(5);setLogPhotoKey('');setLogPhotoPreview('')
+   refresh();Taro.showToast({title:'制作记录已保存',icon:'success'})
+  }catch(e){Taro.showToast({title:'保存失败：'+errText(e),icon:'none'})}finally{setBusy(false)}
+ }
+
  const showDetail=(r:Recipe)=>{
   Taro.showModal({title:r.title,content:r.ingredients.map(x=>x.name+' '+(x.quantity??'')+x.unit).join('、')+'\n'+r.steps.map((s,n)=>(n+1)+'. '+s.content).join('\n'),showCancel:false})
  }
@@ -218,9 +247,21 @@ export default function Index(){
      <Text className='cardTitle'>{r.title}</Text>
      <Text className='muted small'>{r.category} · {r.cookingMinutes||'待补充'} 分钟</Text>
      <Text className='muted small'>{r.description||'一张等待补充故事的料理卡牌'}</Text>
-     <Text className={'chip '+(store.favoriteIds.includes(r.id)?'chosen':'')} onClick={e=>{e.stopPropagation();toggleFavorite(r.id)}}>{store.favoriteIds.includes(r.id)?'★ 已收藏':'☆ 收藏'}</Text>
+     <View className='chips'>
+      <Text className={'chip '+(store.favoriteIds.includes(r.id)?'chosen':'')} onClick={e=>{e.stopPropagation();toggleFavorite(r.id)}}>{store.favoriteIds.includes(r.id)?'★ 已收藏':'☆ 收藏'}</Text>
+      <Text className='chip' onClick={e=>{e.stopPropagation();setLogRecipe(r)}}>📝 记录制作</Text>
+     </View>
     </View>
    </View>)}</View>
+   {logRecipe&&<View className='panel'>
+    <Text className='heading'>记录「{logRecipe.title}」的制作</Text>
+    {logPhotoPreview?<Image className='aiPreview' src={logPhotoPreview} mode='aspectFill'/>:null}
+    <Button className='secondary' onClick={chooseLogPhoto}>{logPhotoKey||logPhotoPreview?'已选照片 · 重拍':'拍一张成品照（可选）'}</Button>
+    <View className='chips'>{[1,2,3,4,5].map(n=><Text key={n} className={'chip '+(logRating===n?'chosen':'')} onClick={()=>setLogRating(n)}>{'★'.repeat(n)}</Text>)}</View>
+    <Textarea className='field area' placeholder='心得：火候、调味、家人的评价…' value={logNotes} onInput={e=>setLogNotes(e.detail.value)}/>
+    <Button className='primary' loading={busy} onClick={saveLog}>保存制作记录</Button>
+    <Button className='secondary' onClick={()=>setLogRecipe(null)}>取消</Button>
+   </View>}
    <View className='panel'>
     <Text className='heading'>AI 录入菜谱</Text>
     <Text className='muted'>拍摄成品或描述做法，AI 生成可编辑草稿。未知用量会保留待补充。</Text>
@@ -306,6 +347,14 @@ export default function Index(){
      <Text className='heading'>加入其他家庭空间</Text>
      <Input className='field' placeholder='输入邀请码' value={joinCode} onInput={e=>setJoinCode(e.detail.value)}/>
      <Button className='secondary' loading={busy} onClick={joinSpace}>加入家庭空间</Button>
+    </View>
+    <View className='panel'>
+     <Text className='heading'>家庭制作记录</Text>
+     {!store.cookingLogs.length&&<Text className='muted'>还没有制作记录，在图鉴卡牌上点「记录制作」。</Text>}
+     {store.cookingLogs.slice(0,10).map(l=>{const r=recipes.find(x=>x.id===l.recipeId);return <View className='selectRow' key={l.id}>
+      <Text className='grow'>{r?.title||'已删除菜谱'} {'★'.repeat(l.rating||0)}</Text>
+      <Text className='muted small'>{l.notes||'无心得'} · {l.cookedAt.slice(0,10)}</Text>
+     </View>})}
     </View>
    </View>}
   </View>}

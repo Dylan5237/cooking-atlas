@@ -78,7 +78,8 @@ describe('refresh 映射与缓存', () => {
       'GET /api/recipes': {data: [serverRecipe]},
       'GET /api/meal-plans': {data: [serverPlan]},
       'GET /api/shopping-lists': {data: [serverList]},
-      'GET /api/favorites': {data: [{recipeId: 'r1'}]}
+      'GET /api/favorites': {data: [{recipeId: 'r1'}]},
+      'GET /api/cooking-logs': {data: []}
     })
   })
   it('服务端行正确映射为领域类型', async () => {
@@ -103,7 +104,8 @@ describe('refresh 映射与缓存', () => {
       'GET /api/recipes': {data: [{...serverRecipe, coverKey: null}]},
       'GET /api/meal-plans': {data: []},
       'GET /api/shopping-lists': {data: []},
-      'GET /api/favorites': {data: []}
+      'GET /api/favorites': {data: []},
+      'GET /api/cooking-logs': {data: []}
     })
     const s = await repository.refresh()
     expect(s.recipes[0].coverKey).toBeUndefined()
@@ -139,6 +141,7 @@ describe('写入契约（服务端权威）', () => {
     mockRequest({
       'GET /api/recipes': {data: []}, 'GET /api/meal-plans': {data: []},
       'GET /api/shopping-lists': {data: [serverList]}, 'GET /api/favorites': {data: []},
+      'GET /api/cooking-logs': {data: []},
       'PATCH /api/shopping-lists/l1/items/i1': {data: {...serverList, items: [{...serverList.items[0], status: 'purchased'}]}}
     })
     await repository.refresh()
@@ -208,6 +211,42 @@ describe('会话编排 ensureSession', () => {
     expect(storage.get('cooking-atlas-active-space')).toBe('joined-space')
     const call = (Taro.request as any).mock.calls[0][0]
     expect(call.data.inviteCode).toBe('ABC123')
+  })
+})
+
+describe('菜单编辑与烹饪记录', () => {
+  const refreshRoutes = {
+    'GET /api/recipes': {data: [serverRecipe]},
+    'GET /api/meal-plans': {data: [serverPlan]},
+    'GET /api/shopping-lists': {data: [serverList]},
+    'GET /api/favorites': {data: []},
+    'GET /api/cooking-logs': {data: []}
+  }
+  it('updatePlan 走 PUT 且刷新缓存（采购差异同步由服务端完成）', async () => {
+    // 真实服务端 PUT 后 GET 会返回最新数据，mock 保持一致
+    mockRequest({...refreshRoutes, 'GET /api/meal-plans': {data: [{...serverPlan, servings: 4}]}, 'PUT /api/meal-plans/p1': {data: {...serverPlan, servings: 4}}})
+    const p = await repository.updatePlan('p1', {title: '家庭晚餐', servings: 4, recipeIds: ['r1']})
+    const call = (Taro.request as any).mock.calls[0][0]
+    expect(call.method).toBe('PUT')
+    expect(call.data.recipeIds).toEqual(['r1'])
+    expect(p.servings).toBe(4)
+    expect(repository.getStore().plan?.servings).toBe(4)
+  })
+  it('addCookingLog 携带 spaceId 且缓存前插', async () => {
+    const serverLog = {id: 'c1', spaceId: SPACE, recipeId: 'r1', mealPlanId: 'p1', cookedAt: '2026-11-16T07:00:00.000Z', photos: [], notes: '好吃', rating: 5, createdById: 'u1'}
+    mockRequest({'POST /api/cooking-logs': {data: serverLog}})
+    const log = await repository.addCookingLog({recipeId: 'r1', notes: '好吃', rating: 5})
+    const call = (Taro.request as any).mock.calls[0][0]
+    expect(call.data.spaceId).toBe(SPACE)
+    expect(log.id).toBe('c1')
+    expect(repository.getStore().cookingLogs[0].id).toBe('c1')
+  })
+  it('refresh 映射烹饪记录', async () => {
+    const serverLog = {id: 'c1', spaceId: SPACE, recipeId: 'r1', mealPlanId: null, cookedAt: '2026-11-16T07:00:00.000Z', photos: [`spaces/${SPACE}/p.png`], notes: '香', rating: 4, createdById: 'u2'}
+    mockRequest({...refreshRoutes, 'GET /api/cooking-logs': {data: [serverLog]}})
+    const s = await repository.refresh()
+    expect(s.cookingLogs[0].rating).toBe(4)
+    expect(s.cookingLogs[0].photos.length).toBe(1)
   })
 })
 

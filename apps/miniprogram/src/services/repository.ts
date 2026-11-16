@@ -3,9 +3,10 @@ import type{Recipe,MealRequest,MealPlan,ShoppingList,Ingredient}from'@cooking-at
 import{demoRecipes,demoPlan}from'../state/demo'
 import{apiRequest,getActiveSpaceId,getAccessToken}from'./api'
 
-export type Store={recipes:Recipe[];requests:MealRequest[];plan:MealPlan|null;shopping:ShoppingList|null;favoriteIds:string[]}
+export type CookingLog={id:string;spaceId:string;recipeId:string;mealPlanId?:string|null;cookedAt:string;photos:string[];notes:string;rating?:number|null;createdById:string}
+export type Store={recipes:Recipe[];requests:MealRequest[];plan:MealPlan|null;shopping:ShoppingList|null;favoriteIds:string[];cookingLogs:CookingLog[]}
 const KEY='cooking-atlas-demo'
-const empty:Store={recipes:[],requests:[],plan:null,shopping:null,favoriteIds:[]}
+const empty:Store={recipes:[],requests:[],plan:null,shopping:null,favoriteIds:[],cookingLogs:[]}
 const demoInitial:Store={...empty,recipes:demoRecipes,plan:demoPlan}
 
 export function isDemoMode(){return process.env.TARO_APP_DEMO_MODE==='true'}
@@ -23,6 +24,9 @@ function mapPlan(p:any):MealPlan{
 function mapList(l:any):ShoppingList{
  return{id:l.id,spaceId:l.spaceId,mealPlanId:l.mealPlanId,title:l.title,status:l.status,items:l.items||[],createdAt:typeof l.createdAt==='string'?l.createdAt:new Date(l.createdAt).toISOString(),updatedAt:typeof l.updatedAt==='string'?l.updatedAt:new Date(l.updatedAt).toISOString()}
 }
+function mapLog(l:any):CookingLog{
+ return{id:l.id,spaceId:l.spaceId,recipeId:l.recipeId,mealPlanId:l.mealPlanId,cookedAt:typeof l.cookedAt==='string'?l.cookedAt:new Date(l.cookedAt).toISOString(),photos:l.photos||[],notes:l.notes||'',rating:l.rating,createdById:l.createdById}
+}
 
 // ---------- 内存缓存：同步读（UI 渲染），异步刷新（bootstrap/写后） ----------
 let cache:Store=isDemoMode()?readDemo():empty
@@ -38,11 +42,12 @@ export const repository={
   if(isDemoMode()){cache=readDemo();return cache}
   if(!getAccessToken()||!getActiveSpaceId()){cache=empty;return cache}
   const sid=spaceId()
-  const[recipes,plans,lists,favorites]=await Promise.all([
+  const[recipes,plans,lists,favorites,logs]=await Promise.all([
    apiRequest<any[]>('/api/recipes?spaceId='+encodeURIComponent(sid)),
    apiRequest<any[]>('/api/meal-plans?spaceId='+encodeURIComponent(sid)),
    apiRequest<any[]>('/api/shopping-lists?spaceId='+encodeURIComponent(sid)),
-   apiRequest<any[]>('/api/favorites?spaceId='+encodeURIComponent(sid))
+   apiRequest<any[]>('/api/favorites?spaceId='+encodeURIComponent(sid)),
+   apiRequest<any[]>('/api/cooking-logs?spaceId='+encodeURIComponent(sid))
   ])
   const mappedPlans=plans.map(mapPlan)
   const mappedLists=lists.map(mapList)
@@ -51,7 +56,8 @@ export const repository={
    requests:cache.requests,
    plan:mappedPlans.find(p=>p.status==='confirmed')||mappedPlans[0]||null,
    shopping:mappedLists[0]||null,
-   favoriteIds:favorites.map((f:any)=>f.recipeId)
+   favoriteIds:favorites.map((f:any)=>f.recipeId),
+   cookingLogs:logs.map(mapLog)
   }
   return cache
  },
@@ -133,5 +139,23 @@ export const repository={
   const list=mapList(l)
   cache={...cache,shopping:list}
   return list
+ },
+
+ /** owner 编辑已确认菜单：服务端重建快照并差异同步采购清单 */
+ async updatePlan(planId:string,input:{title:string;servings:number;recipeIds:string[]}):Promise<MealPlan>{
+  if(isDemoMode())throw new Error('DEMO_MODE_READONLY')
+  const p=await apiRequest<any>('/api/meal-plans/'+planId,'PUT',{spaceId:spaceId(),...input})
+  const plan=mapPlan(p)
+  cache={...cache,plan}
+  await this.refresh()
+  return plan
+ },
+
+ async addCookingLog(input:{recipeId:string;mealPlanId?:string;notes?:string;rating?:number;photos?:string[]}):Promise<CookingLog>{
+  if(isDemoMode())throw new Error('DEMO_MODE_READONLY')
+  const l=await apiRequest<any>('/api/cooking-logs','POST',{spaceId:spaceId(),...input})
+  const log=mapLog(l)
+  cache={...cache,cookingLogs:[log,...cache.cookingLogs]}
+  return log
  }
 }
