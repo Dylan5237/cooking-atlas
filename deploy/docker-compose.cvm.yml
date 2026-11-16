@@ -33,7 +33,9 @@ services:
     restart: "no"
   api:
     build:
-      context: ..
+      # 必须绝对路径：compose v5 用 `..` 会按当前工作目录解析（曾解析成 /home/iris-deploy 导致
+      # `lstat /home/iris-deploy/apps: no such file or directory`）。CVM 上仓库固定在 /home/iris-deploy/cooking-atlas。
+      context: /home/iris-deploy/cooking-atlas
       dockerfile: apps/api/Dockerfile
     container_name: cooking-atlas-api
     restart: unless-stopped
@@ -64,6 +66,8 @@ services:
       STT_BASE_URL: ${STT_BASE_URL:-}
       STT_API_KEY: ${STT_API_KEY:-}
       STT_MODEL: ${STT_MODEL:-whisper-1}
+      # 试用期登录：留空即彻底关闭该入口；配置后小程序输试用码可进入
+      TRIAL_LOGIN_CODE: ${TRIAL_LOGIN_CODE:-}
       CORS_ORIGIN: "*"
       MAX_UPLOAD_MB: "10"
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
