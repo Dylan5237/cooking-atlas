@@ -12,6 +12,10 @@ const schema=z.object({
  AI_BASE_URL:z.preprocess(emptyToUndefined,z.string().url().optional()),
  AI_API_KEY:z.preprocess(emptyToUndefined,z.string().optional()),
  AI_MODEL:z.preprocess(emptyToUndefined,z.string().optional()),
- CORS_ORIGIN:z.string().default('*'),MAX_UPLOAD_MB:z.coerce.number().default(10)
+ CORS_ORIGIN:z.string().default('*'),MAX_UPLOAD_MB:z.coerce.number().default(10),
+ RATE_LIMIT_MAX:z.coerce.number().int().positive().default(120),
+ // 仅供自动化契约测试的登录旁路：必须显式开启、非 production、且携带测试密钥。
+ AUTH_TEST_MODE:z.preprocess(v=>v==='true',z.boolean().default(false)),
+ AUTH_TEST_SECRET:z.preprocess(emptyToUndefined,z.string().min(16).optional())
 })
 export const env=schema.parse(process.env)
