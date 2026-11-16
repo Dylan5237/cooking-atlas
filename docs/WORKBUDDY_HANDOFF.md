@@ -48,7 +48,7 @@
 2. 将 apps/miniprogram/src/services/repository.ts 的 local Storage demo adapter 替换为 REST repository；所有菜谱、收藏、点菜、菜单、采购数据必须来自 API。
 3. 完成家人点菜提交、owner 查看汇总、菜单编辑/确认；当前 API 有请求和确认基础路由，客户端完整流程尚未接通。
 4. AI 草稿确认后调用 POST /api/recipes 保存菜谱；目前解析接口只返回草稿。
-5. 图片上传后保存 object key；菜谱/详情列表读取时调用签名 URL 接口或实现可刷新图片 URL。注意临时本地路径不能当作持久化图片地址。
+5. 图片上传后保存 object key；菜谱/详情列表读取时调用 GET /api/uploads/read-url 获取短期签名 URL。注意临时本地路径不能当作持久化图片地址。客户端已提供 resolveImageUrl 辅助函数，但列表/详情尚未接入。
 6. 语音录入和转写尚未实现；评估微信录音 API 与服务端 STT Provider。
 7. 高清 Canvas 卡牌合成、相册保存和微信分享尚未实现。
 8. 采购清单前端编辑数量、标记家中已有/已购买，并在菜单变更时做差异同步。
@@ -68,6 +68,7 @@
 - POST /api/meal-plans/:id/shopping-list
 - GET /api/shopping-lists、PATCH /api/shopping-lists/:id/items/:itemId
 - POST /api/uploads
+- GET /api/uploads/read-url?spaceId=...&key=...
 - POST /api/ai/recipe-draft
 - GET /health
 
