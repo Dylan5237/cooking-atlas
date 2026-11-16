@@ -539,6 +539,31 @@ describe('安全加固', () => {
     const r = await call('POST', '/api/spaces/join', {token: memberA.token, body: {inviteCode: 'A'.repeat(100)}})
     expect(r.status).toBe(400)
   })
+  it('菜谱食材结构非法（字符串数组）→ 400（显式 schema 拒绝任意 JSON）', async () => {
+    const r = await call('POST', '/api/recipes', {token: ownerA.token, body: {spaceId: spaceA.id, title: '注入', ingredients: ['<script>'], steps: []}})
+    expect(r.status).toBe(400)
+  })
+  it('菜谱食材数量越界（>100 项）→ 400', async () => {
+    const many = Array.from({length: 101}, (_, i) => ingredient('食材' + i, 1, 'g'))
+    const r = await call('POST', '/api/recipes', {token: ownerA.token, body: {spaceId: spaceA.id, title: '超长', ingredients: many, steps: []}})
+    expect(r.status).toBe(400)
+  })
+  it('菜谱标题超长（>60 字）→ 400', async () => {
+    const r = await call('POST', '/api/recipes', {token: ownerA.token, body: {spaceId: spaceA.id, title: '菜'.repeat(61), ingredients: [ingredient('盐', null, '适量')], steps: []}})
+    expect(r.status).toBe(400)
+  })
+  it('省略可选字段时使用默认值（category/servings 等）', async () => {
+    const r = await call('POST', '/api/recipes', {token: ownerA.token, body: {spaceId: spaceA.id, title: `默认值菜-${RUN}`, ingredients: [ingredient('盐', null, '适量')], steps: []}})
+    expect(r.status).toBe(200)
+    expect(r.data.category).toBe('家常菜')
+    expect(r.data.servings).toBe(2)
+    expect(r.data.difficulty).toBe('待补充')
+    await call('DELETE', `/api/recipes/${r.data.id}?spaceId=${spaceA.id}`, {token: ownerA.token})
+  })
+  it('食材为空数组 → 400（至少一项）', async () => {
+    const r = await call('POST', '/api/recipes', {token: ownerA.token, body: {spaceId: spaceA.id, title: '无食材', ingredients: [], steps: []}})
+    expect(r.status).toBe(400)
+  })
 })
 
 // 与「上传与签名 URL」共用的 1x1 PNG 字节
