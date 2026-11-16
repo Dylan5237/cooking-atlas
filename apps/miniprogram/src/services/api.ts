@@ -33,6 +33,19 @@ export async function uploadImage(filePath:string,spaceId:string):Promise<{key:s
  return JSON.parse(res.data)
 }
 
+/** 录音上传：与图片同等的空间隔离；服务端按音频魔数校验 */
+export async function uploadAudio(filePath:string,spaceId:string):Promise<{key:string;contentType:string;size:number}>{
+ const token=getAccessToken()
+ const res=await Taro.uploadFile({url:BASE+'/api/uploads/audio',filePath,name:'file',formData:{spaceId},header:token?{Authorization:'Bearer '+token}:{}})
+ if(res.statusCode<200||res.statusCode>=300){let body:any=null;try{body=JSON.parse(res.data)}catch{};throw new Error(body?.error||('UPLOAD_FAILED_'+res.statusCode))}
+ return JSON.parse(res.data)
+}
+
+/** 语音转写：audioKey 必须是本空间已上传的音频对象；STT 未配置时服务端 503 */
+export async function transcribeAudio(audioKey:string,spaceId=getActiveSpaceId()){
+ return apiRequest<{text:string}>('/api/ai/transcribe','POST',{spaceId,audioKey})
+}
+
 export async function resolveImageUrl(key:string,spaceId=getActiveSpaceId()){
  const result=await apiRequest<{url:string}>('/api/uploads/read-url?spaceId='+encodeURIComponent(spaceId)+'&key='+encodeURIComponent(key))
  return result.url

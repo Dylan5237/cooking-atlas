@@ -1,8 +1,10 @@
 import React,{useEffect,useMemo,useState}from'react'
-import{View,Text,Input,Textarea,Button,Image}from'@tarojs/components'
-import Taro from'@tarojs/taro'
+import{View,Text,Input,Textarea,Button,Image,Canvas}from'@tarojs/components'
+import Taro,{useShareAppMessage}from'@tarojs/taro'
 import{repository,isDemoMode}from'../../services/repository'
 import{ensureSession,joinSpaceByCode,uploadImage,resolveImageUrl,getActiveSpaceId,apiRequest}from'../../services/api'
+import{startRecording,stopRecording,transcribeRecording,isRecording}from'../../services/recorder'
+import{CARD_W,layoutCard,drawCard,getCardCanvas,loadCoverImage,exportCardImage,saveCardToAlbum}from'../../services/card'
 import type{Recipe,Ingredient}from'@cooking-atlas/shared'
 import'./index.scss'
 
@@ -45,6 +47,11 @@ export default function Index(){
  const[logPhotoPreview,setLogPhotoPreview]=useState('')
  // 封面签名 URL 缓存（object key → 短期签名 URL）
  const[covers,setCovers]=useState<Record<string,string>>({})
+ // 语音录入
+ const[recording,setRecording]=useState(false)
+ // 卡牌导出
+ const[cardRecipe,setCardRecipe]=useState<Recipe|null>(null)
+ const[cardBusy,setCardBusy]=useState(false)
 
  const refresh=()=>setStore(repository.getStore())
  const isOwner=session?.role==='owner'
@@ -224,6 +231,62 @@ export default function Index(){
   Taro.showModal({title:r.title,content:r.ingredients.map(x=>x.name+' '+(x.quantity??'')+x.unit).join('、')+'\n'+r.steps.map((s,n)=>(n+1)+'. '+s.content).join('\n'),showCancel:false})
  }
 
+ // 语音录入：录音 → 上传 → 转写 → 回填 AI 描述框（STT 未配置时提示手动输入）
+ const toggleRecord=async()=>{
+  if(isDemoMode()){Taro.showToast({title:'演示模式不支持语音录入',icon:'none'});return}
+  if(!session){Taro.showToast({title:'尚未登录',icon:'none'});return}
+  if(recording||isRecording()){
+   try{
+    Taro.showLoading({title:'转写中'})
+    const{tempFilePath}=await stopRecording()
+    setRecording(false)
+    const text=await transcribeRecording(tempFilePath)
+    setAiText(v=>(v?v+'\n':'')+text)
+    Taro.hideLoading();Taro.showToast({title:'已转写，可继续编辑',icon:'success'})
+   }catch(e){
+    Taro.hideLoading();setRecording(false)
+    const msg=errText(e)
+    if(msg.includes('STT_PROVIDER_NOT_CONFIGURED'))Taro.showModal({title:'语音转写暂不可用',content:'服务端尚未配置语音转写服务，请改用文字描述。',showCancel:false})
+    else Taro.showToast({title:'语音录入失败：'+msg,icon:'none'})
+   }
+   return
+  }
+  try{startRecording();setRecording(true);Taro.showToast({title:'录音中，再次点击结束',icon:'none'})}
+  catch(e){Taro.showToast({title:'无法启动录音：'+errText(e),icon:'none'})}
+ }
+
+ // 高清卡牌：布局 → Canvas 2D 绘制 → 导出 PNG → 保存相册
+ const exportCard=async(r:Recipe)=>{
+  if(cardBusy)return
+  setCardRecipe(r);setCardBusy(true)
+  try{
+   Taro.showLoading({title:'生成卡牌'})
+   const dpr=Math.min(Taro.getSystemInfoSync().pixelRatio||2,3)
+   const{canvas,ctx}=await getCardCanvas()
+   const realMeasure=(text:string,font:string)=>{ctx.font=font;return ctx.measureText(text).width}
+   const coverUrl=r.coverKey?(covers[r.coverKey]||await resolveImageUrl(r.coverKey).catch(()=>'')):''
+   const layout=layoutCard(r,!!coverUrl,realMeasure)
+   canvas.width=Math.round(CARD_W*dpr);canvas.height=Math.round(layout.height*dpr)
+   const cover=coverUrl?await loadCoverImage(canvas,coverUrl).catch(()=>undefined):undefined
+   drawCard(ctx,r,layout,dpr,cover)
+   const filePath=await exportCardImage(canvas,CARD_W,layout.height,dpr)
+   await saveCardToAlbum(filePath)
+   Taro.hideLoading();Taro.showToast({title:'卡牌已保存到相册',icon:'success'})
+  }catch(e){
+   Taro.hideLoading()
+   const msg=errText(e)
+   if(msg==='ALBUM_PERMISSION_DENIED')Taro.showToast({title:'未获得相册权限',icon:'none'})
+   else Taro.showToast({title:'卡牌生成失败：'+msg,icon:'none'})
+  }finally{setCardBusy(false)}
+ }
+
+ // 微信分享：好友卡片带菜谱标题与封面（封面用签名 URL，短期有效可接受）
+ useShareAppMessage(()=>{
+  const r=cardRecipe||recipes[0]
+  const cover=r?.coverKey?covers[r.coverKey]:''
+  return{title:r?`「${r.title}」· 家庭料理图鉴`:'把做过的味道，收藏起来 · 家庭料理图鉴',path:'/pages/index/index',...(cover?{imageUrl:cover}:{})}
+ })
+
  return <View className='app'>
   <View className='hero'>
    <Text className='eyebrow'>MY COOKING COLLECTION</Text>
@@ -250,6 +313,7 @@ export default function Index(){
      <View className='chips'>
       <Text className={'chip '+(store.favoriteIds.includes(r.id)?'chosen':'')} onClick={e=>{e.stopPropagation();toggleFavorite(r.id)}}>{store.favoriteIds.includes(r.id)?'★ 已收藏':'☆ 收藏'}</Text>
       <Text className='chip' onClick={e=>{e.stopPropagation();setLogRecipe(r)}}>📝 记录制作</Text>
+      <Text className='chip' onClick={e=>{e.stopPropagation();exportCard(r)}}>🎴 导出卡牌</Text>
      </View>
     </View>
    </View>)}</View>
@@ -268,6 +332,7 @@ export default function Index(){
     <Textarea className='field area' placeholder='例如：今天做了番茄炒蛋，先炒鸡蛋，再炒番茄，最后混合调味。' value={aiText} onInput={e=>setAiText(e.detail.value)}/>
     {aiPreview?<Image className='aiPreview' src={aiPreview} mode='aspectFill'/>:null}
     <Button className='secondary' onClick={chooseCover}>{aiImageKey||coverKey?'已上传照片 · 重新选择':'拍照 / 从相册选择成品'}</Button>
+    <Button className={'secondary'+(recording?' recording':'')} onClick={toggleRecord}>{recording?'⏹ 结束录音并转写':'🎙 语音描述这道菜'}</Button>
     <Button className='primary' onClick={parseAI}>AI 整理成菜谱草稿</Button>
     <Text className='heading'>手动录入</Text>
     <Input className='field' placeholder='菜名' value={title} onInput={e=>setTitle(e.detail.value)}/>
@@ -342,6 +407,7 @@ export default function Index(){
       <Text className='grow'>邀请码：{session.space.inviteCode}</Text>
       <Text className='muted small'>点击复制</Text>
      </View>}
+     <Button className='secondary' openType='share'>📤 分享给家人</Button>
     </View>
     <View className='panel'>
      <Text className='heading'>加入其他家庭空间</Text>
@@ -358,5 +424,7 @@ export default function Index(){
     </View>
    </View>}
   </View>}
+  {/* 卡牌导出画布：移出可视区但保留在渲染树中（Canvas 2D 需要真实节点） */}
+  <Canvas type='2d' id='recipe-card' className='cardCanvas'/>
  </View>
 }
