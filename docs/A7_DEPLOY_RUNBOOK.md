@@ -3,7 +3,27 @@
 > 状态：**BLOCKED** —— 前端/后端代码就绪，卡在外部凭据与备案域名。下文每一步都可执行，缺项已标注。
 > 纪律：不使用演示数据冒充验收通过；每一步的产出都要留可复核证据。
 
-## 0. 已完成 / 已验证（无需重复）
+## 0. 无域名试用（当前可用，2026-11-16 实跑通过）
+
+**适用**：微信开发者工具 / 预览 / 真机调试（必须开调试模式）。**不适用**：体验版与正式版（微信强制备案域名 + HTTPS）。
+
+| 项 | 值 |
+| --- | --- |
+| API 地址 | `http://43.139.159.100.nip.io`（80 端口 vhost，借 nip.io 通配 DNS 指到 CVM，未动现有 80/443 站点） |
+| 试用码 | `atlas-a4755a`（CVM `deploy/.env` 的 `TRIAL_LOGIN_CODE`，留空即关闭入口） |
+| 小程序源码 | `apps/miniprogram`，`project.config.json` 的 `urlCheck=false`（跳过合法域名校验） |
+| 编译产物 | `apps/miniprogram/dist/`，`dist/common.js` 已注入上述 API 地址 |
+| 登录方式 | 页面底部「输入试用码」→ 设备号自动生成；两台手机用同一码会得到两个账号，可验证 owner/member |
+
+**操作步骤**：微信开发者工具 → 导入项目 → 目录选 `apps/miniprogram`（AppID 选「测试号」或保留 `touristappid`）→ 详情 → 本地设置 → 勾选「不校验合法域名…」→ 编译。真机调试时手机端也要打开调试模式。AI 与 STT 未配置会 503 降级为手动录入，不影响其余流程。
+
+**安全边界**：`TRIAL_LOGIN_CODE` 是显式开关，未配置时 `/api/auth/trial` 返回 503；按 deviceId 限流 10/min；token 7 天；CVM 上 api/postgres/minio 仍只绑 127.0.0.1，公网仅经 nginx vhost 的 `/api/*` 与 `/health` 透传。现有站点回归验证 `http(s)://43.139.159.100/` 均 200 / 471B，与改前一致。
+
+**公网冒烟证据**：`/health` → `{"ok":true}`；正确码 → 200 + JWT；错误码 → 403；现有站点 → 200/471B。
+
+---
+
+## 0.1 已完成 / 已验证（无需重复）
 
 | 项 | 证据 |
 | --- | --- |
@@ -11,8 +31,8 @@
 | 迁移已应用 | `migrate deploy` 无待应用迁移 |
 | API 健康检查 | `GET http://127.0.0.1:3001/health` → `{"ok":true}` |
 | 对象存储 | 私有 bucket `cooking-atlas` 已建 |
-| 契约测试 | `apps/api/test/contract.test.ts` 79/79（含 IDOR/权限/限流/魔数校验） |
-| 前端单测 | 38/38 |
+| 契约测试 | `apps/api/test/contract.test.ts` 84/84（含 IDOR/权限/限流/魔数/试用码） |
+| 前端单测 | 47/47（含试用登录降级链） |
 | 构建 | `build:api` ✔、`build:weapp` Compiled successfully |
 | 备份恢复演练 | `deploy/backup-restore-drill.sh` 9 张表行数一致，RESULT: PASS |
 
