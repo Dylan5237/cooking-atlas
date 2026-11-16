@@ -23,6 +23,8 @@ const schema=z.object({
  AUTH_TEST_SECRET:z.preprocess(emptyToUndefined,z.string().min(16).optional()),
  // 试用期登录：未接入微信 AppID 时的临时入口。设置即启用，删除该变量即彻底关闭。
  // 同一试用码 + 不同设备 = 不同账号，便于用两台手机验证 owner/member 双角色流程。
- TRIAL_LOGIN_CODE:z.preprocess(emptyToUndefined,z.string().min(8).max(64).optional())
+ TRIAL_LOGIN_CODE:z.preprocess(emptyToUndefined,z.string().min(8).max(64).optional()),
+ // 小程序端错误诊断上报开关：默认关闭，显式 true 才记录。生产排障用，记录到服务端日志。
+ DIAGNOSTICS_ENABLED:z.preprocess(v=>v==='true',z.boolean().default(false))
 })
 export const env=schema.parse(process.env)

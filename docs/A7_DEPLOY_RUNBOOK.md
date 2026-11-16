@@ -25,6 +25,33 @@
 
 ---
 
+## 0.05 白屏排查与错误诊断层（2026-11-16 新增）
+
+真机/模拟器首屏白屏时，Console 的红字不会落盘到微信开发者工具日志，只能靠「诊断层自动上报 + 读服务端日志」定位，无需截图/抢鼠标。
+
+**已部署的诊断链路**：
+- 小程序 `src/services/diagnostics.ts`：在 App 模块加载最早期注册 `Taro.onError` + `onUnhandledRejection` + `console.error` 劫持；错误写入本地 storage（去重限流，每类最多 8 条）+ 上报 `POST /api/dev/client-error`。首屏致命错误由 `app.ts` 的 `AppErrorBoundary` 捕获并渲染成可见错误页（含「重试」）。
+- API `POST /api/dev/client-error`：无需鉴权（崩溃时未登录），`DIAGNOSTICS_ENABLED=true` 才生效，限流 20/min、字段长度上限，只写日志不入库。CVM `deploy/.env` 已开启。
+- App 入口已改为 Taro 官方建议的 **class 组件**（原函数式 App + `useEffect` 在小程序端非官方写法，是 `LifeCycle.load fail` 的可疑诱因）；`project.config.json` 已关闭 `compileHotReLoad`（热重载中间态是 `setChanges` 报错的常见诱因）。
+
+**抓错步骤（在你自己电脑上）**：
+1. 微信开发者工具打开 `apps/miniprogram` → 编译（若仍白屏，错误页会显示简要错误）。
+2. 让模拟器加载 3~5 秒，诊断层会把完整错误栈上报到服务端。
+3. 让我读日志（我执行）：`ssh iris-deploy@43.139.159.100 'docker logs cooking-atlas-api 2>&1 | grep CLIENT_DIAGNOSTIC | tail -20'`。
+4. 日志里的 `clientDiagnostic.message` / `stack` 即首屏真实报错，据此定位修复。
+
+日志样例（冒烟测试已验证链路通）：
+```json
+{"level":50,"clientDiagnostic":{"kind":"smoke","message":"...","ip":"..."},"msg":"CLIENT_DIAGNOSTIC"}
+```
+排查完把 `deploy/.env` 的 `DIAGNOSTICS_ENABLED` 改回 `false` 并重建 api 即可关闭。
+
+**白屏可疑诱因（按优先级，供对照）**：
+1. 热重载中间态：`setChanges` 报错的经典来源。已在 `project.config.json` 与 `project.private.config.json` 双处关闭 `compileHotReLoad`。
+2. 函数式 App + `useEffect`：小程序端非官方写法，易触发 `LifeCycle.load fail`。已改为 Taro 官方 class App 入口。
+3. **基础库版本**：`project.private.config.json` 当前 `libVersion=3.18.0`（新版 3.x）。Taro 4.1.5 + 基础库 3.x 的 WebView 渲染层存在 `setChanges` 兼容风险；若上面两项仍白屏，在开发者工具「详情 → 本地设置 → 调试基础库」切到 **2.32.x 稳定版**重启后再编译验证。项目未启用 Skyline（`skylineRenderEnable=false`、app.config 无 renderer），不要误开。
+4. AppID 类型：必须用小程序 AppID，不能用公众号 AppID（见 §0 的坑）。
+
 ## 0.1 已完成 / 已验证（无需重复）
 
 | 项 | 证据 |

@@ -46,6 +46,18 @@ function sanitizeAiText(text:string){return INJECTION_PATTERNS.some(p=>p.test(te
 function safeEqual(a:string,b:string){return timingSafeEqual(createHash('sha256').update(a).digest(),createHash('sha256').update(b).digest())}
 
 app.get('/health',async()=>({ok:true,service:'cooking-atlas-api'}))
+// 小程序端错误诊断上报：仅显式开启时记录，写入服务端日志供远程排障。
+// 无需鉴权（首屏崩溃时用户尚未登录），严格限流 + 长度上限 + 纯日志落盘，不入库不外发。
+app.post('/api/dev/client-error',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(req:any,reply)=>{
+ if(!env.DIAGNOSTICS_ENABLED)return{ignored:true}
+ const b=z.object({
+  ts:z.string().max(40).optional(),kind:z.string().max(40),message:z.string().min(1).max(2000),
+  stack:z.string().max(4000).optional(),scene:z.string().max(120).optional()
+ }).safeParse(req.body)
+ if(!b.success)return reply.code(400).send({error:'INVALID_DIAGNOSTIC'})
+ req.log.error({clientDiagnostic:{...b.data,ip:req.ip,ua:String(req.headers['user-agent']||'').slice(0,200)}}, 'CLIENT_DIAGNOSTIC')
+ return{ok:true}
+})
 // 自动化契约测试专用登录：三重闸门（显式开关 + 非 production + 测试密钥），生产环境不可达。
 if(env.AUTH_TEST_MODE&&env.NODE_ENV!=='production'&&env.AUTH_TEST_SECRET){
  app.post('/api/auth/test',async(req:any,reply)=>{
