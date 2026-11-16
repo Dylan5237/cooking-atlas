@@ -1,0 +1,1 @@
+export default {pages:['pages/index/index'],window:{navigationBarTitleText:'我的料理图鉴',navigationBarBackgroundColor:'#F7F4EE',navigationBarTextStyle:'black',backgroundColor:'#F7F4EE'}}
