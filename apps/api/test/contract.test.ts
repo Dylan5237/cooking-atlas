@@ -442,4 +442,106 @@ describe('AI 草稿', () => {
     const r = await call('POST', '/api/ai/recipe-draft', {token: ownerB.token, body: {spaceId: spaceA.id, text: 'x'}})
     expect(r.status).toBe(403)
   })
+  it('超长文本 → 400（输入长度限制）', async () => {
+    const r = await call('POST', '/api/ai/recipe-draft', {token: ownerA.token, body: {spaceId: spaceA.id, text: 'x'.repeat(5000)}})
+    expect(r.status).toBe(400)
+  })
 })
+
+describe('语音上传与转写', () => {
+  // 合法 WAV 文件头（RIFF....WAVE）+ 最小 data 块；内容无需可播放，服务端只校验文件头
+  const wavHeader = Buffer.concat([Buffer.from('RIFF'), Buffer.from([36, 0, 0, 0]), Buffer.from('WAVE'), Buffer.from('fmt '), Buffer.from([16, 0, 0, 0]), Buffer.alloc(16), Buffer.from('data'), Buffer.from([0, 0, 0, 0])])
+  let audioKey = ''
+  it('member 上传录音（wav 魔数）→ 空间隔离 key', async () => {
+    const form = new FormData()
+    form.append('spaceId', spaceA.id)
+    form.append('file', new Blob([wavHeader], {type: 'audio/wav'}), 'recording.wav')
+    const res = await fetch(BASE + '/api/uploads/audio', {method: 'POST', headers: {Authorization: 'Bearer ' + memberA.token}, body: form})
+    expect(res.status).toBe(200)
+    const data: any = await res.json()
+    expect(data.key.startsWith(`spaces/${spaceA.id}/`)).toBe(true)
+    expect(data.key.endsWith('.wav')).toBe(true)
+    expect(data.contentType).toBe('audio/wav')
+    audioKey = data.key
+  })
+  it('伪装音频（文本内容）→ 415 AUDIO_ONLY（魔数校验）', async () => {
+    const form = new FormData()
+    form.append('spaceId', spaceA.id)
+    form.append('file', new Blob(['not audio at all'], {type: 'audio/mpeg'}), 'fake.mp3')
+    const res = await fetch(BASE + '/api/uploads/audio', {method: 'POST', headers: {Authorization: 'Bearer ' + memberA.token}, body: form})
+    expect(res.status).toBe(415)
+    expect((await res.json()).error).toBe('AUDIO_ONLY')
+  })
+  it('非成员上传录音 → 403', async () => {
+    const form = new FormData()
+    form.append('spaceId', spaceA.id)
+    form.append('file', new Blob([wavHeader], {type: 'audio/wav'}), 'x.wav')
+    const res = await fetch(BASE + '/api/uploads/audio', {method: 'POST', headers: {Authorization: 'Bearer ' + ownerB.token}, body: form})
+    expect(res.status).toBe(403)
+  })
+  it('转写：跨空间 audioKey → 403 AUDIO_FORBIDDEN', async () => {
+    const r = await call('POST', '/api/ai/transcribe', {token: ownerB.token, body: {spaceId: spaceB.id, audioKey}})
+    expect(r.status).toBe(403)
+    expect(r.data.error).toBe('AUDIO_FORBIDDEN')
+  })
+  it('转写：非音频扩展名 key → 415', async () => {
+    const r = await call('POST', '/api/ai/transcribe', {token: memberA.token, body: {spaceId: spaceA.id, audioKey: `spaces/${spaceA.id}/evil.png`}})
+    expect(r.status).toBe(415)
+  })
+  it('转写：未配置 STT provider → 503 降级（不崩溃）', async () => {
+    const r = await call('POST', '/api/ai/transcribe', {token: memberA.token, body: {spaceId: spaceA.id, audioKey}})
+    expect([503, 200]).toContain(r.status)
+    if (r.status === 503) expect(r.data.error).toBe('STT_PROVIDER_NOT_CONFIGURED')
+  })
+  it('转写：不存在的音频对象 → 404/503（取决于 provider 配置）', async () => {
+    const r = await call('POST', '/api/ai/transcribe', {token: memberA.token, body: {spaceId: spaceA.id, audioKey: `spaces/${spaceA.id}/no-such-file.mp3`}})
+    expect([404, 503]).toContain(r.status)
+  })
+})
+
+describe('安全加固', () => {
+  it('伪造 mimetype 的非图片文件 → 415（魔数校验，不再信任客户端声明）', async () => {
+    const form = new FormData()
+    form.append('spaceId', spaceA.id)
+    form.append('file', new Blob(['<?php echo "evil"; ?>'], {type: 'image/png'}), 'shell.png')
+    const res = await fetch(BASE + '/api/uploads', {method: 'POST', headers: {Authorization: 'Bearer ' + memberA.token}, body: form})
+    expect(res.status).toBe(415)
+    expect((await res.json()).error).toBe('IMAGE_ONLY')
+  })
+  it('真实 PNG 但声明错误 mimetype → 按魔数落库为 image/png', async () => {
+    const form = new FormData()
+    form.append('spaceId', spaceA.id)
+    form.append('file', new Blob([pngBytes()], {type: 'application/octet-stream'}), 'real.png')
+    const res = await fetch(BASE + '/api/uploads', {method: 'POST', headers: {Authorization: 'Bearer ' + memberA.token}, body: form})
+    expect(res.status).toBe(200)
+    expect((await res.json()).contentType).toBe('image/png')
+  })
+  it('超大图片（>MAX_UPLOAD_MB）→ 413', async () => {
+    const big = Buffer.alloc(11 * 1024 * 1024, 0)
+    // 头部放合法 PNG 魔数，确保走到大小限制而不是类型拒绝
+    Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).copy(big, 0)
+    const form = new FormData()
+    form.append('spaceId', spaceA.id)
+    form.append('file', new Blob([big], {type: 'image/png'}), 'big.png')
+    const res = await fetch(BASE + '/api/uploads', {method: 'POST', headers: {Authorization: 'Bearer ' + memberA.token}, body: form})
+    expect(res.status).toBe(413)
+  })
+  it('邀请码暴力尝试触发限流 → 429', async () => {
+    const attacker = await testLogin(`${RUN}-brute`, '枚举者')
+    let got429 = false
+    for (let i = 0; i < 7; i++) {
+      const r = await call('POST', '/api/spaces/join', {token: attacker.token, body: {inviteCode: `GUESS${i}XX`}})
+      if (r.status === 429) { got429 = true; break }
+    }
+    expect(got429).toBe(true)
+  })
+  it('邀请码超长输入 → 400', async () => {
+    const r = await call('POST', '/api/spaces/join', {token: memberA.token, body: {inviteCode: 'A'.repeat(100)}})
+    expect(r.status).toBe(400)
+  })
+})
+
+// 与「上传与签名 URL」共用的 1x1 PNG 字节
+function pngBytes() {
+  return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+}
