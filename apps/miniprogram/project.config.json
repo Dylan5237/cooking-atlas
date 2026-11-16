@@ -1,1 +1,16 @@
-{"description":"我的料理图鉴","compileType":"miniprogram","miniprogramRoot":"dist/","appid":"touristappid","projectname":"cooking-atlas","setting":{"urlCheck":false,"es6":true,"enhance":true,"postcss":true,"minified":true,"compileHotReLoad":true},"condition":{}}
+{
+  "description": "我的料理图鉴",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "dist/",
+  "appid": "wxc79bbed1d3614ec2",
+  "projectname": "cooking-atlas",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "compileHotReLoad": true
+  },
+  "condition": {}
+}
