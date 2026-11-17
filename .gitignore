@@ -8,3 +8,5 @@ coverage
 .swc/
 **/.swc/
 deploy/*.tar.gz
+apps/miniprogram/dist-h5/
+

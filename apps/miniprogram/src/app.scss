@@ -17,16 +17,16 @@ button::after { border: 0; }
 .fatalRetry{background:#b42318;color:#fff;border-radius:12rpx;font-size:28rpx;padding:16rpx 32rpx}
 
 /* ===== 通用暖色卡牌基础 ===== */
-.kicker{font-size:20rpx;letter-spacing:4rpx;color:$muted}
-.h2{font-size:56rpx;line-height:1.4;@include serif-title;color:$ink}
-.h3{font-size:30rpx;@include serif-title;margin:26rpx 0 16rpx}
-.subtitle{font-size:24rpx;color:$muted;line-height:1.7;margin-top:8rpx}
+.kicker{display:block;font-size:20rpx;letter-spacing:4rpx;color:$muted}
+.h2{display:block;font-size:56rpx;line-height:1.4;@include serif-title;color:$ink}
+.h3{display:block;font-size:30rpx;@include serif-title;margin:26rpx 0 16rpx}
+.subtitle{display:block;font-size:24rpx;color:$muted;line-height:1.7;margin-top:8rpx}
 .pill{display:inline-flex;align-items:center;gap:6rpx;background:$sage;color:$green;border-radius:$radius-control;padding:8rpx 22rpx;font-size:22rpx}
 .pill.warm{background:$peach;color:#79533b}
 .panel{background:$surface;border:1rpx solid $line;border-radius:$radius-panel;padding:26rpx 26rpx}
 .panel-top{display:flex;justify-content:space-between;align-items:center;font-size:26rpx;margin-bottom:14rpx}
-.mini{font-size:22rpx;color:$muted;line-height:1.8}
-.helper{font-size:22rpx;color:$subtle;line-height:1.8;margin-top:14rpx}
+.mini{display:block;font-size:22rpx;color:$muted;line-height:1.8}
+.helper{display:block;font-size:22rpx;color:$subtle;line-height:1.8;margin-top:14rpx}
 .tip{font-size:22rpx;color:$muted;background:$soft;border-radius:20rpx;padding:18rpx 22rpx;line-height:1.8;margin-top:16rpx}
 .head-row{display:flex;justify-content:space-between;align-items:center;gap:16rpx}
 
