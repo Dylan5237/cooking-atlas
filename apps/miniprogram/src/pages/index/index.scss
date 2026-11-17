@@ -1,4 +1,141 @@
-.app{padding:0 30rpx 70rpx}.hero{padding:44rpx 4rpx 30rpx}.eyebrow{display:block;color:#879080;letter-spacing:4rpx;font-size:18rpx}.heroTitle{display:block;margin:16rpx 0;font-family:serif;font-size:48rpx;line-height:1.4;color:#2c3b30}.muted{display:block;color:#8c897f;font-size:22rpx;line-height:1.6}.tabs{display:flex;background:#eeece5;border-radius:20rpx;padding:8rpx;margin:8rpx 0 30rpx}.tab{flex:1;text-align:center;padding:17rpx 0;color:#77766e}.tab.active{background:#fffefa;border-radius:15rpx;color:#405d49;font-weight:600}.heading{display:block;font-size:34rpx;font-weight:650;margin:18rpx 0;color:#30372f}.field{box-sizing:border-box;width:100%;background:#fffefa;border:1rpx solid #e9e5db;border-radius:16rpx;padding:20rpx;margin:16rpx 0;font-size:25rpx}.area{min-height:130rpx}.chips{display:flex;flex-wrap:wrap;gap:12rpx;margin:18rpx 0 24rpx}.chip{background:#eeece5;color:#77766e;border-radius:30rpx;padding:12rpx 20rpx;font-size:21rpx}.chip.chosen{background:#dfe8df;color:#405d49}.cards{display:grid;grid-template-columns:1fr 1fr;gap:18rpx}.card,.panel{background:#fffefa;border:1rpx solid #eee9df;border-radius:22rpx;overflow:hidden;margin-bottom:20rpx}.art{height:190rpx;background:linear-gradient(145deg,#e9e6d9,#d9e1d5);display:flex;align-items:center;justify-content:center;position:relative}.emoji{font-size:82rpx}.number{position:absolute;bottom:12rpx;right:15rpx;color:#718070;font-size:16rpx}.cardBody{padding:18rpx}.cardTitle{display:block;font-size:28rpx;font-weight:650;margin-bottom:8rpx}.small{font-size:19rpx}.panel{padding:24rpx;margin-top:24rpx}.primary{background:#48634f;color:white;border-radius:16rpx;font-size:27rpx;margin:20rpx 0}.selectRow{display:flex;align-items:center;gap:16rpx;padding:22rpx 4rpx;border-bottom:1rpx solid #eeeae2}.grow{flex:1}.empty{text-align:center;padding:90rpx 20rpx;color:#929087}
-.cover{width:100%;height:190rpx;display:block}.aiPreview{width:100%;height:280rpx;border-radius:16rpx;margin:12rpx 0}.secondary{background:#e6ebe3;color:#405d49;border-radius:14rpx;font-size:24rpx;margin:12rpx 0}
-.secondary.recording{background:#c9564a;color:#fff}
+@import '../../styles/tokens.scss';
+
+/* ===== 页面骨架 ===== */
+.page{padding:24rpx $space-page 200rpx}
+.appbar{height:88rpx;display:flex;align-items:center;justify-content:space-between;padding:0 8rpx}
+.brand{display:flex;align-items:center;gap:10rpx;font-size:26rpx;font-weight:600;color:$ink}
+.brand-icon{width:40rpx;height:40rpx;border-radius:12rpx;background:$sage;display:flex;align-items:center;justify-content:center;font-size:22rpx}
+.meta-pills{display:flex;gap:14rpx;margin:18rpx 0 8rpx}
+.meta-pills .pill strong{font-size:30rpx;font-weight:650;margin-left:4rpx}
+
+/* ===== 叠卡（B 结构）：主卡 + 两张错位衬卡 ===== */
+.stack{height:636rpx;position:relative;display:flex;align-items:center;justify-content:center;margin:16rpx 0 0;perspective:2200rpx}
+.stack-base{position:absolute;width:484rpx;height:554rpx;border:1rpx solid #bdc9b3;border-radius:$radius-card;background:$sage;transform:translate(-24rpx,6rpx) rotate(-9deg);box-shadow:$shadow-card}
+.stack-base.second{background:$peach;transform:translate(26rpx,8rpx) rotate(8deg)}
+.hero-card{position:relative;width:504rpx;height:584rpx;border-radius:$radius-card;background:transparent;transform:rotate(-3deg);transition:transform 220ms}
+.hero-card.flipped{transform:rotate(-1deg)}
+.card-rotor{width:100%;height:100%;transform-style:preserve-3d;transition:transform 400ms}
+.hero-card.flipped .card-rotor{transform:rotateY(180deg)}
+.face{position:absolute;top:0;left:0;width:100%;height:100%;border:1rpx solid #bcc8b0;border-radius:$radius-card;color:$ink;box-shadow:$shadow-card;backface-visibility:hidden;overflow:hidden;box-sizing:border-box}
+.face.front{background:$rice}
+.face.back{transform:rotateY(180deg);padding:36rpx;background:$surface}
+/* 翻面降级：不支持 preserve-3d 的环境由 JS 切 class */
+.hero-card.fade .card-rotor{transition:opacity 200ms}
+.ct-label{font-size:16rpx;letter-spacing:3rpx;color:$subtle}
+.ct-no{font-size:20rpx;font-weight:700;color:$green}
+.card-top{position:absolute;top:32rpx;left:34rpx;right:34rpx;display:flex;justify-content:space-between;align-items:center;border-bottom:1rpx solid rgba(168,185,152,.4);padding-bottom:18rpx;z-index:2}
+.card-food{position:absolute;top:96rpx;left:30rpx;width:444rpx;height:416rpx;border-radius:16rpx}
+.card-food.contain{filter:drop-shadow(0 12rpx 6rpx rgba(71,81,50,.12))}
+.stamp{position:absolute;right:24rpx;top:110rpx;z-index:3;width:72rpx;height:72rpx;border-radius:50%;border:1rpx solid #819872;display:flex;align-items:center;justify-content:center;font-size:15rpx;line-height:1.4;text-align:center;color:$green;transform:rotate(9deg);background:rgba(251,248,238,.5)}
+.card-title{position:absolute;left:34rpx;bottom:92rpx;font-size:44rpx;@include serif-title;color:$ink;z-index:2}
+.card-foot{position:absolute;left:34rpx;right:34rpx;bottom:26rpx;border-top:1rpx solid rgba(168,185,152,.5);display:flex;justify-content:space-between;padding-top:16rpx;font-size:18rpx;color:$muted;z-index:2}
+.back-label{font-size:16rpx;letter-spacing:3rpx;color:$subtle}
+.back-title{display:block;font-size:42rpx;@include serif-title;margin:18rpx 0 8rpx;color:$ink}
+.back-ingredients{display:flex;flex-direction:column;gap:8rpx;margin:18rpx 0;font-size:22rpx;color:$muted}
+.back-step{display:block;font-size:24rpx;line-height:1.8;color:#3f5a4e;margin-top:10rpx}
+.back-hint{display:block;font-size:20rpx;color:$subtle;margin-top:22rpx}
+.flip-hint{margin-top:14rpx;font-size:20rpx;color:$muted;text-align:center}
+.paired{display:flex;gap:16rpx}
+.paired .cta{flex:1}
+
+/* 收藏小卡行 */
+.section-head{display:flex;justify-content:space-between;align-items:center;margin:34rpx 0 16rpx}
+.section-head .h3{margin:0}
+.mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:16rpx}
+.mini-card{background:$surface;border:1rpx solid $line;border-radius:24rpx;padding:18rpx;display:flex;flex-direction:column;gap:10rpx;box-sizing:border-box}
+.mini-card .serial{font-size:16rpx;letter-spacing:2rpx;color:$subtle}
+.mini-card image{width:100%;height:180rpx;border-radius:14rpx;background:$soft}
+.mini-card b{font-size:26rpx;font-weight:650;color:$ink}
+.mini-card small{font-size:20rpx;color:$muted}
+.family-note{display:flex;align-items:center;justify-content:space-between;background:$sage;border-radius:22rpx;padding:20rpx 24rpx;margin-top:24rpx;font-size:24rpx;color:$green}
+
+/* 空状态 */
+.empty{padding:80rpx 20rpx;text-align:center}
+.empty .h3{margin-top:12rpx}
+
+/* ===== 点菜扇形 ===== */
+.menu-title{font-size:60rpx;line-height:1.38;margin-top:14rpx}
+.menu-title em{font-style:normal;color:$green}
+.config{display:flex;justify-content:space-between;align-items:center;gap:10rpx;padding:20rpx 22rpx;background:$sage;border-radius:32rpx;margin-top:32rpx}
+.meal-chip{background:none;border:0;font-size:24rpx;color:$green;padding:8rpx 0}
+.meal-chip.on{font-weight:700}
+.people{display:flex;align-items:center;gap:14rpx;font-size:24rpx;color:$ink}
+.people button,.people .pbtn{height:56rpx;width:56rpx;border:1rpx solid #c4d0ba;background:$page;border-radius:50%;font-size:34rpx;line-height:1;display:flex;align-items:center;justify-content:center;color:$ink;padding:0}
+.family-request{display:flex;align-items:flex-start;gap:14rpx;font-size:20rpx;color:$muted;margin-top:24rpx;line-height:1.7}
+.avatar{width:46rpx;height:46rpx;border:3rpx solid $page;background:$peach;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:18rpx;color:#79533b}
+.hand{height:464rpx;position:relative;margin:24rpx -24rpx 0;overflow:hidden}
+.fan-card{position:absolute;width:320rpx;height:400rpx;top:36rpx;border:1rpx solid #b4c3aa;border-radius:32rpx;color:$ink;box-shadow:$shadow-card;box-sizing:border-box}
+.fan-card.fc-0{left:0;transform:rotate(-12deg);background:$peach}
+.fan-card.fc-1{top:6rpx;left:50%;margin-left:-160rpx;z-index:2;background:$sage;transform:rotate(1deg)}
+.fan-card.fc-2{right:0;background:$rice;transform:rotate(13deg)}
+.fan-card .serial{position:absolute;left:24rpx;top:22rpx;font-size:16rpx;letter-spacing:2rpx;color:$muted;z-index:2}
+.fan-card .tag{position:absolute;right:20rpx;top:18rpx;font-size:16rpx;border:1rpx solid #a7b499;border-radius:20rpx;padding:6rpx 10rpx;background:rgba(251,248,238,.85);color:$green;z-index:2}
+.fan-card .fan-img{position:absolute;width:302rpx;height:302rpx;top:50rpx;left:9rpx;border-radius:16rpx}
+.fan-card .fan-title{position:absolute;left:24rpx;bottom:22rpx;font-size:26rpx;font-weight:650;z-index:2}
+.draw-hint{font-size:20rpx;color:$muted;text-align:center;margin:20rpx 0 6rpx}
+.recipe-row{display:flex;align-items:center;gap:18rpx;border-bottom:1rpx solid $line;min-height:106rpx;padding:10rpx 0}
+.recipe-row:last-child{border-bottom:0}
+.recipe-row .thumb{width:88rpx;height:88rpx;border-radius:18rpx;background:$soft;flex:none}
+.recipe-row .copy{flex:1;min-width:0}
+.recipe-row .copy b{font-size:26rpx;font-weight:600;display:block}
+.recipe-row .copy small{font-size:20rpx;color:$muted;margin-top:4rpx;display:block}
+.row-action{width:64rpx;height:64rpx;border-radius:50%;background:$soft;color:$green;display:flex;align-items:center;justify-content:center;font-size:28rpx;flex:none}
+.portion-input{width:150rpx;border:1rpx solid #cad6bf;border-radius:16rpx;background:$surface;padding:10rpx 14rpx;font-size:24rpx;box-sizing:border-box;margin-top:6rpx}
+
+/* ===== 采购 ===== */
+.shop-hero{display:flex;justify-content:space-between;align-items:center;background:$sage;border-radius:40rpx;padding:36rpx;margin-top:34rpx}
+.shop-hero .count{font-size:92rpx;line-height:1.1;font-weight:500;letter-spacing:-4rpx;color:$ink}
+.shop-hero .count span{font-size:42rpx;color:#78917d}
+.shop-hero .mini{margin-top:10rpx}
+.meter{height:8rpx;border-radius:8rpx;background:#c6d7bf;overflow:hidden;width:264rpx;margin-top:24rpx}
+.meter i{display:block;height:100%;background:$green;transition:width 220ms}
+.shop-hero .bag{font-size:100rpx;transform:rotate(9deg);opacity:.9}
+.shop-head{display:flex;justify-content:space-between;align-items:center;margin:38rpx 0 18rpx;font-size:20rpx;color:$muted}
+.shop-group{border:1rpx solid $line;background:$surface;padding:0 26rpx;border-radius:34rpx}
+.shop-row{display:flex;align-items:center;gap:20rpx;border-bottom:1rpx solid $line;min-height:106rpx}
+.shop-row:last-child{border-bottom:0}
+.shop-row .name{flex:1;font-size:24rpx;min-width:0}
+.shop-row .name small{display:block;font-size:18rpx;color:$muted;margin-top:6rpx}
+.check{height:44rpx;width:44rpx;padding:0;background:none;border:1rpx solid #bccbb5;border-radius:14rpx;display:flex;align-items:center;justify-content:center;flex:none;font-size:24rpx}
+.check.done{background:$green;border-color:$green;color:#fffdf7}
+.shop-row.done .name{color:$subtle}
+.shop-row.bought .name text{text-decoration:line-through}
+.qty{background:none;text-align:right;font-size:22rpx;line-height:1.6;padding:20rpx 0 20rpx 12rpx;min-height:80rpx;color:$muted}
+.at-home{display:flex;gap:16rpx;padding:26rpx;border:1rpx dashed #bdccaf;border-radius:28rpx;margin-top:28rpx;font-size:20rpx;color:$muted;line-height:1.9}
+.at-home .ic{font-size:36rpx;color:#809b72}
+
+/* ===== 我的 ===== */
+.profile-hero{display:flex;flex-direction:column;align-items:flex-start;gap:10rpx;margin-top:20rpx}
+.profile-hero .avatar{width:96rpx;height:96rpx;font-size:34rpx;margin-bottom:8rpx}
+.profile-stat{display:flex;gap:48rpx;margin-top:26rpx}
+.profile-stat span{display:flex;flex-direction:column;gap:4rpx}
+.profile-stat b{font-size:44rpx;@include serif-title;color:$ink}
+.profile-stat small{font-size:20rpx;color:$muted}
+
+/* ===== 底部导航 ===== */
+.tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(251,248,238,.96);backdrop-filter:blur(16px);border-top:1rpx solid $line;display:flex;padding-bottom:calc(14rpx + env(safe-area-inset-bottom));z-index:20}
+.tabbar .nav{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4rpx;padding:14rpx 0 6rpx;color:#9aa898;font-size:20rpx}
+.tabbar .nav .ic{font-size:36rpx;line-height:1}
+.tabbar .nav.on{color:$green;font-weight:600}
+
+/* 行动条（点菜/采购底部主操作） */
+.actionbar{position:fixed;left:0;right:0;bottom:calc(100rpx + env(safe-area-inset-bottom));padding:16rpx $space-page;z-index:19}
+.actionbar .above{display:flex;justify-content:space-between;font-size:20rpx;color:$muted;margin-bottom:12rpx}
+.actionbar .cta{margin:0;box-shadow:0 12rpx 30rpx -12rpx rgba(221,118,93,.55)}
+
+/* 卡牌导出画布（保留既有能力） */
 .cardCanvas{position:fixed;left:-9999px;top:0;width:750px;height:1200px}
+
+/* 录入弹层内 */
+.upload{position:relative;border:1rpx dashed #b9cbb0;border-radius:20rpx;background:$surface;color:$muted;font-size:24rpx;display:flex;align-items:center;justify-content:center;gap:12rpx;padding:30rpx 0;margin-top:20rpx}
+.upload-preview{width:100%;height:320rpx;border-radius:20rpx;margin-top:16rpx}
+.aiPreview{width:100%;height:320rpx;border-radius:20rpx;margin-top:16rpx}
+.ing-line{display:flex;justify-content:space-between;align-items:flex-start;gap:30rpx;padding:16rpx 0;border-bottom:1rpx dashed $line;font-size:24rpx;line-height:1.7}
+.ing-line .q{color:$muted;text-align:right}
+.step-line{display:flex;gap:20rpx;font-size:24rpx;line-height:1.9;margin-bottom:20rpx}
+.step-line .n{font-size:20rpx;width:46rpx;height:46rpx;flex:none;border-radius:50%;background:$sage;display:flex;align-items:center;justify-content:center;margin-top:6rpx;color:$green;font-weight:600}
+.dish-large{width:100%;height:380rpx;border-radius:40rpx;background:$rice;margin-bottom:28rpx}
+.detail-meta{display:flex;gap:10rpx;flex-wrap:wrap;margin:20rpx 0}
+.sheet .cta{margin-top:26rpx}
+
+/* 轮盘历史保留位（不再使用） */

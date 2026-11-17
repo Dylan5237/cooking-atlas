@@ -13,7 +13,7 @@ import {buildShoppingList} from '@cooking-atlas/shopping-engine'
 
 const prisma=new PrismaClient()
 const app=Fastify({logger:true,bodyLimit:2*1024*1024})
-await app.register(cors,{origin:env.CORS_ORIGIN==='*'?true:env.CORS_ORIGIN.split(',')})
+await app.register(cors,{origin:env.CORS_ORIGIN==='*'?true:env.CORS_ORIGIN.split(','),methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS']})
 await app.register(jwt,{secret:env.JWT_SECRET})
 // 限流按会话分桶（同一家庭 NAT 出口 IP 相同，按 IP 会互相挤占配额）；未登录请求回退 IP。
 // token 仅用于分桶不做信任依据，鉴权仍由 jwtVerify 完成。
