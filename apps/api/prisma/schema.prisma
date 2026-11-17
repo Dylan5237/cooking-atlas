@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model User {
+ id String @id @default(cuid())
+ openid String @unique
+ displayName String?
+ avatarUrl String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ memberships FamilyMembership[]
+ ownedSpaces FamilySpace[] @relation("SpaceOwner")
+ favorites RecipeFavorite[]
+ mealRequests MealRequest[]
+ recipesCreated Recipe[] @relation("RecipeCreator")
+}
+model FamilySpace {
+ id String @id @default(cuid())
+ name String
+ inviteCode String @unique
+ status String @default("active")
+ ownerId String
+ owner User @relation("SpaceOwner",fields:[ownerId],references:[id])
+ createdAt DateTime @default(now())
+ memberships FamilyMembership[]
+ recipes Recipe[]
+ mealRequests MealRequest[]
+ mealPlans MealPlan[]
+ shoppingLists ShoppingList[]
+ cookingLogs CookingLog[]
+}
+model FamilyMembership {
+ id String @id @default(cuid())
+ spaceId String
+ userId String
+ role String @default("member")
+ status String @default("active")
+ joinedAt DateTime @default(now())
+ space FamilySpace @relation(fields:[spaceId],references:[id],onDelete:Cascade)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ @@unique([spaceId,userId])
+ @@index([userId,status])
+}
+model Recipe {
+ id String @id @default(cuid())
+ spaceId String
+ title String
+ category String @default("家常菜")
+ coverKey String?
+ servings Int @default(2)
+ cookingMinutes Int @default(0)
+ difficulty String @default("待补充")
+ description String @default("")
+ ingredients Json
+ steps Json
+ version Int @default(1)
+ status String @default("active")
+ createdById String
+ createdBy User @relation("RecipeCreator",fields:[createdById],references:[id])
+ space FamilySpace @relation(fields:[spaceId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ favorites RecipeFavorite[]
+ @@index([spaceId,status,createdAt])
+ @@index([spaceId,category])
+}
+model RecipeFavorite {
+ id String @id @default(cuid())
+ spaceId String
+ userId String
+ recipeId String
+ createdAt DateTime @default(now())
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ recipe Recipe @relation(fields:[recipeId],references:[id],onDelete:Cascade)
+ @@unique([spaceId,userId,recipeId])
+ @@index([spaceId,userId])
+}
+model MealRequest {
+ id String @id @default(cuid())
+ spaceId String
+ userId String
+ mealDate DateTime
+ mealType String
+ servings Int
+ recipeIds Json
+ note String @default("")
+ status String @default("submitted")
+ createdAt DateTime @default(now())
+ space FamilySpace @relation(fields:[spaceId],references:[id],onDelete:Cascade)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ @@index([spaceId,status,mealDate])
+}
+model MealPlan {
+ id String @id @default(cuid())
+ spaceId String
+ title String
+ mealType String
+ servings Int
+ status String @default("draft")
+ items Json
+ createdById String
+ confirmedById String?
+ createdAt DateTime @default(now())
+ confirmedAt DateTime?
+ space FamilySpace @relation(fields:[spaceId],references:[id],onDelete:Cascade)
+ shoppingLists ShoppingList[]
+ cookingLogs CookingLog[]
+ @@index([spaceId,status,createdAt])
+}
+model ShoppingList {
+ id String @id @default(cuid())
+ spaceId String
+ mealPlanId String
+ title String
+ status String @default("active")
+ items Json
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ space FamilySpace @relation(fields:[spaceId],references:[id],onDelete:Cascade)
+ mealPlan MealPlan @relation(fields:[mealPlanId],references:[id],onDelete:Cascade)
+ @@index([spaceId,createdAt])
+}
+model CookingLog {
+ id String @id @default(cuid())
+ spaceId String
+ recipeId String
+ mealPlanId String?
+ cookedAt DateTime @default(now())
+ photos Json
+ notes String @default("")
+ rating Int?
+ createdById String
+ space FamilySpace @relation(fields:[spaceId],references:[id],onDelete:Cascade)
+ mealPlan MealPlan? @relation(fields:[mealPlanId],references:[id],onDelete:SetNull)
+ @@index([spaceId,cookedAt])
+}

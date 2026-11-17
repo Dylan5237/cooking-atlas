@@ -1,0 +1,1 @@
+export default {navigationBarTitleText:'我的料理图鉴',enablePullDownRefresh:false}
