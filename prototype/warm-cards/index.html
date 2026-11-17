@@ -1,26 +1,19 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>我的料理图鉴 · 暖色卡牌原型</title>
-  <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="tokens.css">
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>料理图鉴 · H5 设计修订 v2</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="refinement.css">
 </head>
 <body>
-  <main class="board">
-    <header class="board-head">
-      <div><p class="eyebrow">COOKING ATLAS / SELECTED DIRECTION</p><h1>收藏家的卡牌，家的颜色。</h1><p class="board-sub">B 的叠卡与翻面 × C 的奶油底、鼠尾草绿、陶土橘</p></div>
-      <div class="design-tools">
-        <div class="swatches" aria-label="视觉色板"><i style="background:#fbf8ee"></i><i style="background:#dcead9"></i><i style="background:#dd765d"></i><span>WARM CARD COLLECTION</span></div>
-        <div class="tool-row"><select id="role" aria-label="演示身份"><option value="owner">掌勺者视角</option><option value="member">家人视角</option></select><button id="reset">重置演示</button><button id="empty">查看空状态</button></div>
-      </div>
-    </header>
-    <div class="story"><span><b>01</b> 图鉴 / 把拿手菜收进卡册</span><span><b>02</b> 点菜 / 给今晚一点灵感</span><span><b>03</b> 采购 / 带着清单去买菜</span></div>
-    <div class="screens" id="screens"></div>
-    <footer class="board-foot"><span>可点击：翻卡 → 点菜 → 掌勺者确认 → 采购勾选<br>演示数据仅保留在当前页面；不调用 AI、不上传照片、不连接真实家庭。</span><span>插画沿用已确认方案，仅作示意。<br>正式版优先使用你亲手做的菜品照片。</span></footer>
-  </main>
-  <script src="app.js"></script>
-</body>
-</html>
+<main class="board">
+<header class="board-head"><div><p class="eyebrow">COOKING ATLAS · DESIGN REVISION 02</p><h1>料理图鉴 · H5 实现参考</h1><p class="board-sub">保留卡牌结构与暖色；修正图标、文案和缺图状态。</p></div>
+<div class="design-tools"><div class="swatches"><i style="background:#fbf8ee"></i><i style="background:#dcead9"></i><i style="background:#dd765d"></i><span>B 结构 × C 色板</span></div><div class="tool-row"><select id="role" aria-label="演示身份"><option value="owner">掌勺者</option><option value="member">家人</option></select><button id="try-photo">试放一张成品照</button><button id="reset">重置</button><button id="empty">空状态</button></div></div></header>
+<div class="story"><span><b>01</b> 图鉴 · 记录与收藏</span><span><b>02</b> 点菜 · 选择与确认</span><span><b>03</b> 采购 · 来源与用量</span></div>
+<div class="screens" id="screens"></div>
+<section class="visual-library"><div><h2>一套图标，不混用 Emoji</h2><p>菜谱册、餐碗、采购袋、围裙。圆润轮廓与少量暖色填充。<br>搜索、关闭、加减仍采用简洁符号；不加装饰性 AI 星星。</p></div><div class="icon-samples" id="icon-samples"></div></section>
+<footer class="board-foot"><span>本页是可点击设计参考，不是已完成的 H5 产品。<br>演示数据与角色仅保留在当前页面，不连接真实 API。</span><span>本次不再使用旧的菜品插画。没有真实照片就明确缺图。<br>可试放本地照片；图片不会上传。</span></footer>
+</main>
+<script src="app.js"></script><script src="refinement.js"></script>
+<script>document.getElementById('icon-samples').innerHTML=[['book','图鉴'],['plate','点菜'],['bag','采购'],['user','我的']].map(([name,label])=>`<span>${ic(name)}${label}</span>`).join('');</script>
+</body></html>
