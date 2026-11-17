@@ -115,8 +115,15 @@ export async function ensureSession():Promise<{user:{id:string;displayName?:stri
 /**
  * 登录策略：微信优先；微信未配置时用已存试用码自动登录；
  * 两者都不可用则抛 TRIAL_CODE_REQUIRED（页面据此提示输入试用码）。
+ * H5 运行时无 wx.login，直接走试用码链路。
  */
 export async function loginAny(){
+ // H5 运行时无 wx.login（process.env.TARO_ENV 编译期注入），直接走试用码链路
+ if(process.env.TARO_ENV==='h5'){
+  const code=getTrialCode()
+  if(!code)throw Object.assign(new Error('TRIAL_CODE_REQUIRED'),{statusCode:401})
+  return await loginWithTrialCode(code)
+ }
  try{
   return await loginWithWechat()
  }catch(e:any){

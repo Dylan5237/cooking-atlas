@@ -13,6 +13,12 @@ export default defineConfig({
   outputRoot: 'dist',
   framework: 'react',
   compiler: { type: 'webpack5', prebundle: { enable: false } },
+  h5: {
+    publicPath: '/',
+    staticDirectory: 'static',
+    router: { mode: 'hash' },
+    esnextModules: ['@cooking-atlas'],
+  },
   mini: {
     postcss: { pxtransform: { enable: true } },
     compile: {

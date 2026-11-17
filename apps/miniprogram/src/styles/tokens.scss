@@ -1,0 +1,29 @@
+// 暖色卡牌 · 设计 token（对齐 prototype/warm-cards/tokens.css，px→rpx ×2）
+// 奶油底 / 森林绿文字 / 鼠尾草面板 / 陶土橘主按钮
+$page: #fbf8ee;
+$surface: #fffdf7;
+$ink: #254b42;
+$muted: #64796c;
+$subtle: #7f9386;
+$green: #2d604e;
+$sage: #dcead9;
+$soft: #edf0e4;
+$line: #dae3d6;
+$accent: #dd765d;
+$on-accent: #38271f;
+$peach: #f3d3bc;
+$rice: #f3ead2;
+$danger: #a94438;
+
+$radius-card: 40rpx;
+$radius-panel: 36rpx;
+$radius-control: 999rpx;
+$space-page: 44rpx;
+
+$shadow-card: 0 24rpx 44rpx -26rpx rgba(37, 75, 66, 0.35);
+$shadow: 0 28rpx 64rpx -36rpx rgba(37, 75, 66, 0.32);
+
+@mixin serif-title {
+  font-family: 'Songti SC', 'Noto Serif SC', Georgia, serif;
+  font-weight: 600;
+}
