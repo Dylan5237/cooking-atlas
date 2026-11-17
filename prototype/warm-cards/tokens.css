@@ -1,0 +1,27 @@
+/* B 的卡牌结构 × C 的视觉。颜色优先复用；尺寸按运行环境等比例转换。 */
+:root {
+  --page: #fbf8ee;
+  --surface: #fffdf7;
+  --board: #e6ede7;
+  --ink: #254b42;
+  --muted: #64796c;
+  --subtle: #7f9386;
+  --green: #2d604e;
+  --sage: #dcead9;
+  --soft: #edf0e4;
+  --line: #dae3d6;
+  --accent: #dd765d;
+  --on-accent: #38271f;
+  --peach: #f3d3bc;
+  --rice: #f3ead2;
+  --danger: #a94438;
+  --shadow: 0 14px 32px -18px rgb(37 75 66 / 32%);
+  --shadow-card: 0 12px 22px -13px rgb(37 75 66 / 35%);
+  --radius-card: 20px;
+  --radius-panel: 18px;
+  --radius-control: 999px;
+  --space-page: 22px;
+  --sans: 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --serif: 'Noto Serif CJK SC', 'Songti SC', Georgia, serif;
+  --motion: 220ms;
+}
