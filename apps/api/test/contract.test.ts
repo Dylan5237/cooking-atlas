@@ -352,6 +352,46 @@ describe('采购清单', () => {
   })
 })
 
+describe('逐项计划份数（portions 契约）', () => {
+  let pPlan: any, pList: any
+  it('POST 指定份数 → 快照项 servings=原配方 / plannedServings=计划份数', async () => {
+    // 原配方 4 人份、排骨 500g；本餐 3 人但汤只做 2 人份
+    const c = await call('POST', '/api/recipes', {token: ownerA.token, body: {spaceId: spaceA.id, title: `份量汤-${RUN}`, servings: 4, cookingMinutes: 60, ingredients: [ingredient('排骨', 500, 'g')], steps: [{content: '炖'}]}})
+    expect(c.status).toBe(200)
+    const r = await call('POST', '/api/meal-plans', {token: ownerA.token, body: {spaceId: spaceA.id, title: `份数晚餐-${RUN}`, mealType: 'dinner', servings: 3, recipeIds: [c.data.id], portions: [{recipeId: c.data.id, servings: 2}]}})
+    expect(r.status).toBe(200)
+    const item = r.data.items[0]
+    expect(item.servings).toBe(4)
+    expect(item.plannedServings).toBe(2)
+    pPlan = r.data
+  })
+  it('GET 读回 plannedServings 一致', async () => {
+    const r = await call('GET', `/api/meal-plans?spaceId=${spaceA.id}`, {token: ownerA.token})
+    const mine = r.data.find((p: any) => p.id === pPlan.id)
+    expect(mine.items[0].plannedServings).toBe(2)
+  })
+  it('采购按计划份数换算：500g × 2/4 = 250g', async () => {
+    const r = await call('POST', `/api/meal-plans/${pPlan.id}/shopping-list`, {token: ownerA.token, body: {spaceId: spaceA.id}})
+    expect(r.status).toBe(200)
+    expect(r.data.items[0].displayQuantity).toBe('250g')
+    pList = r.data
+  })
+  it('PUT 不带 portions（仅改标题）→ 沿用已存计划份数，采购不回退整桌人数', async () => {
+    const r = await call('PUT', `/api/meal-plans/${pPlan.id}`, {token: ownerA.token, body: {spaceId: spaceA.id, title: pPlan.title + 'v2', servings: pPlan.servings, recipeIds: pPlan.items.map((x: any) => x.recipeId)}})
+    expect(r.status).toBe(200)
+    expect(r.data.items[0].plannedServings).toBe(2)
+    const lists = await call('GET', `/api/shopping-lists?spaceId=${spaceA.id}`, {token: ownerA.token})
+    const mine = lists.data.find((l: any) => l.id === pList.id)
+    expect(mine.items[0].quantity).toBe(250)
+  })
+  it('PUT 显式 portions → 按新份数重建', async () => {
+    const r = await call('PUT', `/api/meal-plans/${pPlan.id}`, {token: ownerA.token, body: {spaceId: spaceA.id, title: pPlan.title + 'v3', servings: pPlan.servings, recipeIds: pPlan.items.map((x: any) => x.recipeId), portions: [{recipeId: pPlan.items[0].recipeId, servings: 4}]}})
+    expect(r.data.items[0].plannedServings).toBe(4)
+    const s = await call('POST', `/api/meal-plans/${pPlan.id}/shopping-list`, {token: ownerA.token, body: {spaceId: spaceA.id}})
+    expect(s.data.items[0].quantity).toBe(500)
+  })
+})
+
 describe('烹饪记录 cooking_logs', () => {
   let log: any
   it('member 提交烹饪记录（含评分与心得）', async () => {

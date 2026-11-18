@@ -50,3 +50,12 @@ export function parseIngredients(raw: string): Ingredient[] {
     return { name: parts[0].trim(), quantity: m ? Number(m[1]) : null, unit: m ? (m[2] || '待补充') : (a || '待补充') }
   })
 }
+
+/**
+ * 原配方份数解析：空/非正数返回 null（保存前必须人工补充，禁止静默默认 2）。
+ * AI 草稿未识别份数时 mapper 留空，经此函数把"留空"翻译成"阻止保存"。
+ */
+export function resolveServingsInput(raw: string): number | null {
+  const n = Number(String(raw ?? '').trim())
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
+}

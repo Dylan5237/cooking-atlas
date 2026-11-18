@@ -277,3 +277,14 @@ describe('演示模式', () => {
     expect(ribs.quantity).toBe(250) // 500g × 2/4
   })
 })
+describe('演示模式主食唯一性', () => {
+  beforeEach(() => { process.env.TARO_APP_DEMO_MODE = 'true' })
+  it('confirmPlan 对重复 recipeIds 去重：同一主食重复选取只建一项快照（大米 225g 而非 450g）', async () => {
+    await repository.refresh()
+    const plan = await repository.confirmPlan({title: '家庭晚餐', mealType: 'dinner', servings: 3, recipeIds: ['r4', 'r4'], portions: {r4: 3}})
+    expect(plan.items).toHaveLength(1)
+    expect(plan.items[0].plannedServings).toBe(3)
+    const list = await repository.generateShopping(plan.id)
+    expect(list.items.find(i => i.name === '大米')!.quantity).toBe(225) // 150g × 3/2
+  })
+})

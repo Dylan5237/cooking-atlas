@@ -5,7 +5,7 @@ import { repository, isDemoMode } from '../../services/repository'
 import { ensureSession, joinSpaceByCode, uploadImage, resolveImageUrl, getActiveSpaceId, apiRequest, loginWithTrialCode, choosePhotoH5, uploadImageH5 } from '../../services/api'
 import { startRecording, stopRecording, transcribeRecording, isRecording } from '../../services/recorder'
 import { CARD_W, layoutCard, drawCard, getCardCanvas, loadCoverImage, exportCardImage, saveCardToAlbum, exportCardH5 } from '../../services/card'
-import { mapDraftToForm, parseIngredients } from '../../services/draft'
+import { mapDraftToForm, parseIngredients, resolveServingsInput } from '../../services/draft'
 import { dishRole, stapleKind } from '@cooking-atlas/meal-engine'
 import HeroStack from '../../components/HeroStack'
 import FanCards from '../../components/FanCards'
@@ -92,6 +92,10 @@ export default function Index() {
   // 主食意图：stapleId=明确选择的主食；stapleOff=本餐不安排；两者皆空=自动搭配
   const [stapleId, setStapleId] = useState<string | null>(null)
   const [stapleOff, setStapleOff] = useState(false)
+  // 本餐明确排除（删除/不安排）的菜：推荐与换组不得自动复活；确认或重新提交后清空
+  const [excludedIds, setExcludedIds] = useState<string[]>([])
+  // 推荐返回的缺主食提示（引擎 warning），显示在主食行旁
+  const [stapleHint, setStapleHint] = useState('')
   // 录音 / 卡牌
   const [recording, setRecording] = useState(false)
   const [cardBusy, setCardBusy] = useState(false)
@@ -178,30 +182,40 @@ export default function Index() {
     .find(r => dishRole(r) === 'staple')
   const stapleLabel = stapleOff ? '本餐不安排' : currentStaple?.title || '未选择（自动搭配）'
 
-  /** 主食三态选择：某道主食 / 自动搭配 / 本餐不安排；家人点的主食不被移除 */
+  /** 主食三态选择。选择与确认边界都按 recipeId 保持唯一：同一主食反复选取幂等。 */
   const pickStaple = (mode: 'auto' | 'off' | string) => {
-    const dropStaples = (ids: string[]) => ids.filter(id => {
-      const r = recipes.find(x => x.id === id)
-      return !r || dishRole(r) !== 'staple' || wishIds.includes(id)
-    })
+    const isStapleId = (id: string) => { const r = recipes.find(x => x.id === id); return !!r && dishRole(r) === 'staple' }
+    const dropStaples = (ids: string[]) => ids.filter(id => !isStapleId(id))
     if (mode === 'auto') {
-      setChosen(dropStaples)
-      setManualPicks(dropStaples)
+      // 只清显式选择；家人点的主食仍由推荐按请求保留
+      setChosen(c => c.filter(id => !isStapleId(id) || wishIds.includes(id)))
+      setManualPicks(p => p.filter(id => !isStapleId(id) || wishIds.includes(id)))
       setStapleId(null); setStapleOff(false)
     } else if (mode === 'off') {
+      // 本餐最终安排以掌勺者操作为准：移除全部主食（含家人点的），并明示未纳入
       setChosen(dropStaples)
       setManualPicks(dropStaples)
       setStapleId(null); setStapleOff(true)
-      Taro.showToast({ title: '本餐不安排主食', icon: 'none' })
+      const wishStaples = wishIds.filter(isStapleId).map(id => recipes.find(x => x.id === id)?.title).filter(Boolean)
+      Taro.showToast({ title: wishStaples.length ? `本餐不安排主食（家人点的${wishStaples.join('、')}未纳入）` : '本餐不安排主食', icon: 'none' })
     } else {
       const r = recipes.find(x => x.id === mode)
       if (!r) return
-      setChosen(c => [...dropStaples(c), r.id])
-      setManualPicks(p => [...dropStaples(p), r.id])
+      setChosen(c => [...new Set([...dropStaples(c), r.id])])
+      setManualPicks(p => [...new Set([...dropStaples(p), r.id])])
       setPortions(p => ({ ...p, [r.id]: p[r.id] || people }))
       setStapleId(r.id); setStapleOff(false)
+      setExcludedIds(v => v.filter(id => id !== r.id))
     }
     setSheet(null)
+  }
+
+  /** 统一移除：菜单、手动锁定、主食显选与本餐排除一起更新，换推荐不复活已删除项 */
+  const removeDish = (id: string) => {
+    setChosen(c => c.filter(x => x !== id))
+    setManualPicks(p => p.filter(x => x !== id))
+    setStapleId(s => (s === id ? null : s))
+    setExcludedIds(v => [...new Set([...v, id])])
   }
 
   /* ---------------- 录入 ---------------- */
@@ -226,29 +240,29 @@ export default function Index() {
   const chooseCover = async () => {
     try {
       if (isH5) {
-        // 浏览器选图：本地校验；演示模式仅本地预览（不冒充已上传）
+        // 浏览器选图：本地校验；演示模式仅本地预览（不冒充已上传）。
+        // 真实 API 模式：上传成功后才成组更新预览+key+动作，失败保持原状态（不出现"预览B保存A"）
         const photo = await choosePhotoH5()
-        setAiPreview(photo.dataUrl); setCoverAction('replace')
-        if (isDemoMode()) return
+        if (isDemoMode()) { setAiPreview(photo.dataUrl); setAiImageKey(''); setCoverAction('replace'); return }
         Taro.showLoading({ title: '上传中' })
         const up = await uploadImageH5(photo.file, getActiveSpaceId())
-        setAiImageKey(up.key)
+        setAiPreview(photo.dataUrl); setAiImageKey(up.key); setCoverAction('replace')
         Taro.hideLoading(); Taro.showToast({ title: '照片已上传', icon: 'success' })
         return
       }
       const res = await Taro.chooseImage({ count: 1, sizeType: ['compressed'], sourceType: ['album', 'camera'] })
       const local = res.tempFilePaths[0]
-      setAiPreview(local); setCoverAction('replace')
-      if (isDemoMode()) return
+      if (isDemoMode()) { setAiPreview(local); setAiImageKey(''); setCoverAction('replace'); return }
       Taro.showLoading({ title: '上传中' })
       const up = await uploadImage(local, getActiveSpaceId())
-      setAiImageKey(up.key)
+      setAiPreview(local); setAiImageKey(up.key); setCoverAction('replace')
       Taro.hideLoading(); Taro.showToast({ title: '照片已上传', icon: 'success' })
     } catch (e) {
+      // 失败：预览/key/动作全部维持进入表单时的状态，可重试
       Taro.hideLoading()
       const msg = errText(e)
       if (msg === 'PHOTO_INVALID') Taro.showToast({ title: '请选择 5 MB 内的 JPG、PNG 或 WebP 图片', icon: 'none' })
-      else if (msg !== 'NO_FILE') Taro.showToast({ title: '选择照片失败：' + msg, icon: 'none' })
+      else if (msg !== 'NO_FILE') Taro.showToast({ title: '照片上传失败，已保留原照片：' + msg, icon: 'none' })
     }
   }
 
@@ -279,13 +293,15 @@ export default function Index() {
     if (!mTitle.trim()) { Taro.showToast({ title: '请填写菜名', icon: 'none' }); return }
     const ingredients = parseIngredients(mIng)
     if (!ingredients.length) { Taro.showToast({ title: '请至少填写一项食材', icon: 'none' }); return }
+    const servings = resolveServingsInput(mServings)
+    if (!servings) { Taro.showToast({ title: '请补充原配方份数（AI 未能识别时需人工确认）', icon: 'none' }); return }
     const steps = mSteps.split('\n').map(s => s.trim()).filter(Boolean).map(content => ({ content }))
     const payload = {
       title: mTitle.trim(), category: mCategory,
       // 封面三态：replace 换新（API 用 key / demo 用 dataURL）、clear 清除、keep 不动原封面
       coverKey: isDemoMode() || coverAction !== 'replace' ? undefined : (aiImageKey || undefined),
       coverUrl: isDemoMode() ? (coverAction === 'replace' ? aiPreview : coverAction === 'clear' ? '' : undefined) : undefined,
-      servings: Math.max(1, Number(mServings) || 2), cookingMinutes: Number(mMinutes) || 0,
+      servings, cookingMinutes: Number(mMinutes) || 0,
       difficulty: '待补充', description: mDesc, ingredients, steps,
     }
     // API 编辑：clear 时显式传 null 让服务端移除封面；keep 时不传字段
@@ -307,13 +323,21 @@ export default function Index() {
     setPortions(p => { const n = { ...p }; for (const k of Object.keys(n)) n[k] = next; return n })
   }
 
-  /** 明确选择（家人点菜 + 手动锁定）作为推荐必保项；主食意图一并传入 */
+  /** 明确选择（家人点菜 + 手动锁定）作为推荐必保项；排除本餐已删除项；不安排主食时主食愿望也不进必保 */
   const stapleIntent = () => ({ staplePolicy: stapleOff ? 'none' as const : 'auto' as const, stapleRecipeId: stapleId })
+  const computeProtect = () => {
+    const ids = [...new Set([...wishIds, ...manualPicks])].filter(id => !excludedIds.includes(id))
+    if (!stapleOff) return ids
+    return ids.filter(id => {
+      const r = recipes.find(x => x.id === id)
+      return !r || dishRole(r) !== 'staple'
+    })
+  }
 
   const recommend = async () => {
     try {
       setBusy(true)
-      const protect = [...new Set([...wishIds, ...manualPicks])]
+      const protect = computeProtect()
       const rec = await repository.recommend({
         servings: people, mealType: meal,
         requestedRecipeIds: protect.filter(id => recipes.some(r => r.id === id)),
@@ -322,6 +346,7 @@ export default function Index() {
       const ids = rec.items.map(x => x.recipeId)
       setChosen(ids)
       setPortions(Object.fromEntries(ids.map(id => [id, people])))
+      setStapleHint(rec.warnings.find(w => w.includes('主食')) || '')
       refresh()
       // 按实际结果报告：保留数来自真实交集，主食按结果统计
       const kept = protect.filter(id => ids.includes(id)).length
@@ -336,7 +361,7 @@ export default function Index() {
   const reroll = async () => {
     try {
       setBusy(true)
-      const protect = [...new Set([...wishIds, ...manualPicks])]
+      const protect = computeProtect()
       const rec = repository.reroll({
         servings: people, mealType: meal, protect,
         current: chosen, ...stapleIntent(),
@@ -344,6 +369,7 @@ export default function Index() {
       const ids = rec.items.map(x => x.recipeId)
       setChosen(ids)
       setPortions(Object.fromEntries(ids.map(id => [id, people])))
+      setStapleHint(rec.warnings.find(w => w.includes('主食')) || '')
       if (rec.changed > 0) Taro.showToast({ title: `已换 ${rec.changed} 道，保留明确选择 ${rec.keptProtected} 项`, icon: 'none' })
       else Taro.showToast({ title: '没有可换的搭配（同类候选不足），已保留当前选择', icon: 'none' })
     } catch (e) {
@@ -357,7 +383,7 @@ export default function Index() {
     try {
       setBusy(true)
       await repository.submitMealRequest({ mealType: meal, servings: people, recipeIds: chosen, note: orderNote })
-      setChosen([]); setOrderNote(''); setManualPicks([]); setStapleId(null); setStapleOff(false); refresh()
+      setChosen([]); setOrderNote(''); setManualPicks([]); setExcludedIds([]); setStapleId(null); setStapleOff(false); setStapleHint(''); refresh()
       Taro.showToast({ title: '已提交点菜，等待掌勺者确认', icon: 'success' })
     } catch (e) { Taro.showToast({ title: '提交失败：' + errText(e), icon: 'none' }) } finally { setBusy(false) }
   }
@@ -374,7 +400,7 @@ export default function Index() {
       // 菜单确认后立即按快照生成/同步采购清单
       await repository.generateShopping(plan.id)
       refresh(); setSheet(null); setTab('shop')
-      setChosen([]); setManualPicks([]); setStapleId(null); setStapleOff(false)
+      setChosen([]); setManualPicks([]); setExcludedIds([]); setStapleId(null); setStapleOff(false); setStapleHint('')
       Taro.showToast({ title: '菜单已确认，清单已生成', icon: 'success' })
     } catch (e) { Taro.showToast({ title: '确认失败：' + errText(e), icon: 'none' }) } finally { setBusy(false) }
   }
@@ -610,6 +636,11 @@ export default function Index() {
         <Text className='staple-value'>{stapleLabel}</Text>
         <Text className='staple-arrow'>›</Text>
       </View>
+      {stapleHint && !stapleOff && <View className='staple-hint'>
+        <Text>{stapleHint}</Text>
+        <Text className='textbtn' onClick={() => setSheet('staple')}>去选择 ›</Text>
+        {isOwner && <Text className='textbtn' onClick={() => openAdd()}>录入主食</Text>}
+      </View>}
       <View className='family-request'>
         <Text className='avatar'>家</Text>
         <Text style={{ flex: 1 }}>{wishTitles.length ? `家人点的菜：${wishTitles.slice(0, 4).join('、')}` : '还没有家人点菜，先选一两道喜欢的。'}</Text>
@@ -636,7 +667,7 @@ export default function Index() {
               <Text className='row-title'>{r.title}</Text>
               <Text className='row-sub'>{isWish ? '家人点菜 · 重新推荐时保留' : isManual ? '手动选择 · 保留' : isStaple ? '主食' : '已收录菜谱'}</Text>
             </View>
-            <View className='row-action' onClick={() => setChosen(c => c.filter(x => x !== r.id))}><Text>✕</Text></View>
+            <View className='row-action' onClick={() => removeDish(r.id)}><Text>✕</Text></View>
           </View>
         })}
         {!chosenRecipes.length && <Text className='mini'>还没有选择菜品。</Text>}
@@ -878,7 +909,7 @@ export default function Index() {
           <Text className='row-sub'>原配方 {r.servings || 2} 人份 · 计划</Text>
         </View>
         <Input className='portion-input' type='number' value={String(portions[r.id] ?? people)} onInput={e => setPortions(p => ({ ...p, [r.id]: Math.max(1, Number(e.detail.value) || 1) }))} />
-        <View className='row-action' onClick={() => setChosen(c => c.filter(x => x !== r.id))}><Text>✕</Text></View>
+        <View className='row-action' onClick={() => removeDish(r.id)}><Text>✕</Text></View>
       </View>)}
       <View className='tip'>人数不等于每道菜的份量；按每道菜实际要做的计划份数算，未知用量标待核对。</View>
       <Button className='cta' onClick={confirmPlan} loading={busy}>确认菜单，生成采购清单 →</Button>

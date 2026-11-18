@@ -169,7 +169,9 @@ export const repository={
  async confirmPlan(input:{title:string;mealType:'lunch'|'dinner';servings:number;recipeIds:string[];portions?:Record<string,number>}):Promise<MealPlan>{
   if(isDemoMode()){
    const now=new Date().toISOString()
-   const items=input.recipeIds.map(id=>{
+   // 与真实 API 查询行一致：按 recipeId 去重，同一道菜（含主食重复选取）只建一项快照
+   const uniqueIds=[...new Set(input.recipeIds)]
+   const items=uniqueIds.map(id=>{
     const r=cache.recipes.find(x=>x.id===id)
     return{recipeId:id,recipeTitle:r?.title||'已删除菜谱',servings:r?.servings||2,plannedServings:input.portions?.[id]||input.servings,source:'library' as const,snapshotIngredients:r?.ingredients||[],recipeVersion:r?.version||1}
    })
@@ -208,10 +210,11 @@ export const repository={
   return list
  },
 
- /** owner 编辑已确认菜单：服务端重建快照并差异同步采购清单 */
- async updatePlan(planId:string,input:{title:string;servings:number;recipeIds:string[]}):Promise<MealPlan>{
+ /** owner 编辑已确认菜单：服务端重建快照并差异同步采购清单；portions 缺省时服务端沿用已存计划份数 */
+ async updatePlan(planId:string,input:{title:string;servings:number;recipeIds:string[];portions?:Record<string,number>}):Promise<MealPlan>{
   if(isDemoMode())throw new Error('DEMO_MODE_READONLY')
-  const p=await apiRequest<any>('/api/meal-plans/'+planId,'PUT',{spaceId:spaceId(),...input})
+  const portions=input.portions?Object.entries(input.portions).map(([recipeId,servings])=>({recipeId,servings})):undefined
+  const p=await apiRequest<any>('/api/meal-plans/'+planId,'PUT',{spaceId:spaceId(),title:input.title,servings:input.servings,recipeIds:input.recipeIds,portions})
   const plan=mapPlan(p)
   cache={...cache,plan}
   await this.refresh()
