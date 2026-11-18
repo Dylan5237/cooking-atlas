@@ -171,6 +171,7 @@ export default function Index() {
       setPortions(p => ({ ...p, [r.id]: people }))
     }
     addManualPick(r.id)
+    setExcludedIds(v => v.filter(id => id !== r.id)) // 主动重新加入：恢复推荐资格
     setSheet(null); setTab('menu')
     Taro.showToast({ title: '已加入点菜：' + r.title, icon: 'none' })
   }
@@ -341,6 +342,7 @@ export default function Index() {
       const rec = await repository.recommend({
         servings: people, mealType: meal,
         requestedRecipeIds: protect.filter(id => recipes.some(r => r.id === id)),
+        excludedRecipeIds: excludedIds,
         ...stapleIntent(),
       })
       const ids = rec.items.map(x => x.recipeId)
@@ -364,7 +366,7 @@ export default function Index() {
       const protect = computeProtect()
       const rec = repository.reroll({
         servings: people, mealType: meal, protect,
-        current: chosen, ...stapleIntent(),
+        current: chosen, excludedIds, ...stapleIntent(),
       })
       const ids = rec.items.map(x => x.recipeId)
       setChosen(ids)
@@ -831,6 +833,7 @@ export default function Index() {
           if (browseMode === 'pick') {
             if (!chosen.includes(r.id)) { setChosen(c => [...c, r.id]); setPortions(p => ({ ...p, [r.id]: people })) }
             addManualPick(r.id)
+            setExcludedIds(v => v.filter(id => id !== r.id)) // 主动重新加入：恢复推荐资格
             setSheet(null); setTab('menu')
           } else { openDetail(recipeWithCover(r)) }
         }}><Text>›</Text></View>

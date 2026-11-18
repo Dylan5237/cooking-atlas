@@ -135,10 +135,10 @@ export const repository={
   return req
  },
 
- async recommend(input:{servings:number;mealType:'lunch'|'dinner';requestedRecipeIds?:string[];restrictions?:string[];staplePolicy?:'auto'|'none';stapleRecipeId?:string|null}){
+ async recommend(input:{servings:number;mealType:'lunch'|'dinner';requestedRecipeIds?:string[];restrictions?:string[];staplePolicy?:'auto'|'none';stapleRecipeId?:string|null;excludedRecipeIds?:string[]}){
   if(isDemoMode()){
    // 演示模式用本地配餐引擎（与服务端同一套规则），不冒充 AI
-   const rec=recommendMeal({recipes:cache.recipes,servings:input.servings,mealType:input.mealType,favoriteRecipeIds:cache.favoriteIds,recentRecipeIds:cache.cookingLogs.slice(0,5).map(l=>l.recipeId),requestedRecipeIds:input.requestedRecipeIds||[],restrictions:[],allowNewSuggestions:true,staplePolicy:input.staplePolicy,stapleRecipeId:input.stapleRecipeId??null})
+   const rec=recommendMeal({recipes:cache.recipes,servings:input.servings,mealType:input.mealType,favoriteRecipeIds:cache.favoriteIds,recentRecipeIds:cache.cookingLogs.slice(0,5).map(l=>l.recipeId),requestedRecipeIds:input.requestedRecipeIds||[],restrictions:[],allowNewSuggestions:true,staplePolicy:input.staplePolicy,stapleRecipeId:input.stapleRecipeId??null,excludedRecipeIds:input.excludedRecipeIds||[]})
    return{items:rec.items.map(x=>({recipeId:x.recipe.id,title:x.title,source:x.source,servings:x.recipe.servings,snapshotIngredients:x.recipe.ingredients,recipeVersion:x.recipe.version||1,reason:x.reason})),warnings:rec.warnings,newDishSuggestions:rec.newDishSuggestions}
   }
   return apiRequest<{items:{recipeId:string;title:string;source:string;servings:number;snapshotIngredients:Ingredient[];recipeVersion:number;reason:string}[];warnings:string[];newDishSuggestions:string[]}>('/api/meal-recommendations','POST',{spaceId:spaceId(),favoriteRecipeIds:cache.favoriteIds,...input})
@@ -149,7 +149,7 @@ export const repository={
   * 明确选择（家人点菜+手动锁定）保证保留；当前已选但未锁定的菜作为 recent 惩罚，
   * 有替代则被换掉，无替代自然保留。返回实际换掉的道数，由 UI 如实提示。
   */
- reroll(input:{servings:number;mealType:'lunch'|'dinner';protect:string[];current:string[];staplePolicy?:'auto'|'none';stapleRecipeId?:string|null}){
+ reroll(input:{servings:number;mealType:'lunch'|'dinner';protect:string[];current:string[];staplePolicy?:'auto'|'none';stapleRecipeId?:string|null;excludedIds?:string[]}){
   const rec=recommendMeal({
    recipes:cache.recipes,servings:input.servings,mealType:input.mealType,
    favoriteRecipeIds:cache.favoriteIds,
@@ -157,6 +157,7 @@ export const repository={
    requestedRecipeIds:input.protect.filter(id=>cache.recipes.some(r=>r.id===id)),
    restrictions:[],allowNewSuggestions:false,
    staplePolicy:input.staplePolicy,stapleRecipeId:input.stapleRecipeId??null,
+   excludedRecipeIds:input.excludedIds||[],
   })
   const ids=rec.items.map(x=>x.recipe.id)
   const changed=input.current.filter(id=>!ids.includes(id)&&!input.protect.includes(id)).length

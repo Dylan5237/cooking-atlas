@@ -7,6 +7,8 @@ export type MealInput={
  staplePolicy?:'auto'|'none'
  /** 用户在主食选择器中明确选择的主食菜谱 id */
  stapleRecipeId?:string|null
+ /** 本餐明确删除/排除的菜谱 id：退出推荐候选（普通候选与自动主食位都不再选回），重新主动加入前不恢复 */
+ excludedRecipeIds?:string[]
 }
 
 /**
@@ -36,7 +38,10 @@ const RECENT_PENALTY=4
 export function recommendMeal(x:MealInput){
  const n=Math.max(1,Math.min(20,Math.floor(x.servings||1)))
  const warnings:string[]=[]
- const available=x.recipes.filter(r=>!r.ingredients.some(i=>x.restrictions.some(z=>i.name.includes(z))))
+ // 本餐明确排除（掌勺者删除）优先于一切：退出候选池，普通填充与自动主食位都不会选回
+ const excluded=new Set(x.excludedRecipeIds||[])
+ const pool=x.recipes.filter(r=>!excluded.has(r.id))
+ const available=pool.filter(r=>!r.ingredients.some(i=>x.restrictions.some(z=>i.name.includes(z))))
 
  // 明确请求（家人点菜/手动锁定）保证保留：可用者全部入组，不受菜数上限约束
  const requested=available.filter(r=>x.requestedRecipeIds.includes(r.id))
@@ -83,9 +88,11 @@ export function recommendMeal(x:MealInput){
  if(staple&&!picked.some(p=>p.id===staple.id))picked.push(staple)
  const hasStapleItem=picked.some(r=>dishRole(r)==='staple')
  if(staplePolicy!=='none'&&!hasStapleItem&&!mealMainPicked){
-  warnings.push(x.recipes.some(isStapleRecipe)
+  warnings.push(pool.some(isStapleRecipe)
    ?'所选主食与当前忌口冲突，未纳入主食。'
-   :'这餐还没选主食：可在点菜页选择主食，或在图鉴录入主食。')
+   :x.recipes.some(isStapleRecipe)
+    ?'主食已在本餐排除：可重新选择主食，或在图鉴录入主食。'
+    :'这餐还没选主食：可在点菜页选择主食，或在图鉴录入主食。')
  }
  if(!x.recipes.length)warnings.push('图鉴暂无菜谱，无法推荐已有菜。')
 

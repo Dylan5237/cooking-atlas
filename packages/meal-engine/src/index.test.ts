@@ -71,6 +71,28 @@ describe('主食规则',()=>{
   expect(ids).toContain('v1')
   expect(r.items.filter(x=>dishRole(x.recipe)==='staple').length).toBe(1) // 不重复补主食
  })
+ it('本餐删除的菜退出候选：普通填充不再选回',()=>{
+  const r=recommendMeal(base({excludedRecipeIds:['v1']}))
+  expect(r.items.map(x=>x.recipe.id)).not.toContain('v1') // 由另一道素菜补位
+ })
+ it('全部素菜被排除时结构缺口如实提示，不选回被删项',()=>{
+  const r=recommendMeal(base({excludedRecipeIds:['v1','v2']}))
+  const ids=r.items.map(x=>x.recipe.id)
+  expect(ids).not.toContain('v1')
+  expect(ids).not.toContain('v2')
+  expect(r.warnings.some(w=>w.includes('未达到建议菜品数量'))).toBe(true)
+ })
+ it('本餐删除的主食退出自动主食位：不作为普通候选选回',()=>{
+  const r=recommendMeal(base({excludedRecipeIds:['st1','st2']}))
+  const ids=r.items.map(x=>x.recipe.id)
+  expect(ids).not.toContain('st1')
+  expect(ids).not.toContain('st2')
+  expect(r.warnings.some(w=>w.includes('主食已在本餐排除'))).toBe(true)
+ })
+ it('排除优先于家人请求：被掌勺者删除的家人点菜不再入组',()=>{
+  const r=recommendMeal(base({requestedRecipeIds:['st1'],excludedRecipeIds:['st1']}))
+  expect(r.items.map(x=>x.recipe.id)).not.toContain('st1')
+ })
 })
 
 describe('明确请求与既有行为',()=>{
