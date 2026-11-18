@@ -1,25 +1,22 @@
 import { useState } from 'react'
-import { View, Text, Image } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import type { Recipe } from '@cooking-atlas/shared'
-import { fallbackCover } from '../services/coverMap'
+import { Cover } from './Cover'
 
 const amount = (q: number | null | undefined, u: string) =>
   q == null ? (u === '适量' ? '适量' : '待核对') : `${Number(q.toFixed(2))} ${u}`
 
 /**
- * 图鉴主卡叠卡组：主卡 3D 翻面 + 两张错位衬卡（B 结构 × C 视觉）。
- * 翻面用 CSS transform，低版本基础库由父级 flipMode='fade' 降级为正反切换淡入。
+ * 图鉴主卡叠卡组：主卡 3D 翻面 + 两张错位衬卡（B 结构 × C 视觉，v2 文案）。
+ * 制作次数直接用真实记录数，无记录不补 1；没有独立「拿手菜」标记功能就不展示印章。
  */
-export default function HeroStack({ recipe, serial, cooked, signature, onDetail }: {
+export default function HeroStack({ recipe, serial, cooked, onDetail }: {
   recipe: Recipe
   serial: string
   cooked: number
-  signature: boolean
   onDetail: () => void
 }) {
   const [flipped, setFlipped] = useState(false)
-  const cover = recipe.coverKey ? undefined : fallbackCover(recipe.title)
-  const coverUrl = recipe.coverUrl || ''
 
   return <View>
     <View className='stack'>
@@ -30,22 +27,19 @@ export default function HeroStack({ recipe, serial, cooked, signature, onDetail 
         {/* 正面 */}
         <View className='face front'>
           <View className='card-top'>
-            <Text className='ct-label'>FAMILY COLLECTION</Text>
-            <Text className='ct-no'>{serial} ✧</Text>
+            <Text className='ct-label'>我的菜谱</Text>
+            <Text className='ct-no'>NO. {serial}</Text>
           </View>
-          {coverUrl
-            ? <Image className='card-food' src={coverUrl} mode='aspectFill' />
-            : <Image className='card-food contain' src={cover} mode='aspectFit' />}
-          {signature && <View className='stamp'><Text>我家的{'\n'}拿手菜</Text></View>}
+          <View className='card-food'><Cover url={recipe.coverUrl} /></View>
           <Text className='card-title'>{recipe.title}</Text>
           <View className='card-foot'>
-            <Text>{recipe.category} · {recipe.cookingMinutes || '—'} MIN</Text>
-            <Text>做过 {cooked || 1} 次 ↗</Text>
+            <Text>{recipe.category} · {recipe.cookingMinutes || '—'} 分钟</Text>
+            <Text>{cooked ? `记录 ${cooked} 次` : '暂无制作记录'}</Text>
           </View>
         </View>
         {/* 背面：配方摘要 */}
         <View className='face back'>
-          <Text className='back-label'>RECIPE / 配方背面</Text>
+          <Text className='back-label'>配方摘要 · {recipe.servings || 2} 人份</Text>
           <Text className='back-title'>{recipe.title}</Text>
           <View className='back-ingredients'>
             {(recipe.ingredients || []).slice(0, 3).map((i, idx) => (
@@ -53,11 +47,11 @@ export default function HeroStack({ recipe, serial, cooked, signature, onDetail 
             ))}
           </View>
           <Text className='back-step'>{recipe.steps?.[0]?.content || '做法待补充'}</Text>
-          <Text className='back-hint'>{recipe.servings || 2} 人份 · 再点一次回到正面</Text>
+          <Text className='back-hint'>再点一次返回 · 完整步骤见详情</Text>
         </View>
       </View>
       </View>
     </View>
-    <View className='flip-hint' onClick={onDetail}><Text>轻触翻面，点此看完整菜谱</Text></View>
+    <View className='flip-hint' onClick={onDetail}><Text>点卡片查看配方</Text></View>
   </View>
 }

@@ -1,8 +1,8 @@
-import { View, Text, Image } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import type { Recipe } from '@cooking-atlas/shared'
-import { fallbackCover } from '../services/coverMap'
+import { Cover } from './Cover'
 
-/** 点菜扇形卡组：三张微旋转卡预览当前搭配（点击看详情）。 */
+/** 点菜扇形卡组：三张微旋转卡预览当前搭配（点击看详情）；缺图如实标注。 */
 export default function FanCards({ items, wishIds, onDetail }: {
   items: Recipe[]
   wishIds: string[]
@@ -13,7 +13,6 @@ export default function FanCards({ items, wishIds, onDetail }: {
   return <View className='hand'>
     {shown.map((r, i) => {
       const tag = wishIds.includes(r.id) ? '家人点菜' : r.category
-      const cover = r.coverUrl || fallbackCover(r.title, r.category)
       return <View
         key={r.id}
         className={`fan-card fc-${i}`}
@@ -21,9 +20,7 @@ export default function FanCards({ items, wishIds, onDetail }: {
       >
         <Text className='serial'>NO.{String(i + 1).padStart(3, '0')}</Text>
         <Text className='tag'>{tag}</Text>
-        {r.coverUrl
-          ? <Image className='fan-img' src={r.coverUrl} mode='aspectFill' />
-          : <Image className='fan-img contain' src={cover} mode='aspectFit' />}
+        <View className='fan-img'><Cover url={r.coverUrl} label='未上传照片' /></View>
         <Text className='fan-title'>{r.title}</Text>
       </View>
     })}

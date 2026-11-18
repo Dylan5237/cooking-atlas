@@ -37,12 +37,14 @@ function wrap(text:string,maxWidth:number,font:string,measure:Measure,maxLines:n
  return out
 }
 
-/** 纯函数布局：根据文本测量结果计算卡牌高度与各行内容（单测可用假 measure） */
-export function layoutCard(recipe:Pick<Recipe,'title'|'category'|'description'|'ingredients'|'steps'|'servings'|'cookingMinutes'>,hasCover:boolean,measure:Measure):CardLayout{
+/** 纯函数布局：根据文本测量结果计算卡牌高度与各行内容（单测可用假 measure）。
+ *  caps 限制各区块行数；导出完整菜谱卡时传大上限，内容多就增长画布，不截断步骤。 */
+export type CardCaps={ingredients:number;steps:number;desc:number}
+export function layoutCard(recipe:Pick<Recipe,'title'|'category'|'description'|'ingredients'|'steps'|'servings'|'cookingMinutes'>,hasCover:boolean,measure:Measure,caps:CardCaps={ingredients:6,steps:10,desc:3}):CardLayout{
  const inner=CARD_W-PAD*2
- const ingredientLines=wrap(recipe.ingredients.map(x=>x.name+' '+(x.quantity===null||x.quantity===undefined?'':x.quantity)+(x.unit||'')).join('、'),inner,'26px sans-serif',measure,6)
- const stepLines=wrap(recipe.steps.map((s,i)=>(i+1)+'. '+s.content).join('\n'),inner,'26px sans-serif',measure,10)
- const descLines=wrap(recipe.description||'',inner,'24px sans-serif',measure,3)
+ const ingredientLines=wrap(recipe.ingredients.map(x=>x.name+' '+(x.quantity===null||x.quantity===undefined?'':x.quantity)+(x.unit||'')).join('、'),inner,'26px sans-serif',measure,caps.ingredients)
+ const stepLines=wrap(recipe.steps.map((s,i)=>(i+1)+'. '+s.content).join('\n'),inner,'26px sans-serif',measure,caps.steps)
+ const descLines=wrap(recipe.description||'',inner,'24px sans-serif',measure,caps.desc)
  const coverH=hasCover?400:0
  let height=PAD+40+70+20 // eyebrow + 标题 + 间距
  if(hasCover)height+=coverH+28
@@ -82,7 +84,7 @@ export function drawCard(ctx:CardCtx,recipe:Parameters<typeof layoutCard>[0],lay
  ctx.textBaseline='top'
  let y=PAD
  ctx.fillStyle=palette.muted;ctx.font='20px sans-serif'
- ctx.fillText('MY COOKING COLLECTION',PAD,y);y+=40
+ ctx.fillText('菜谱卡',PAD,y);y+=40
  ctx.fillStyle=palette.ink;ctx.font='bold 52px serif'
  ctx.fillText(recipe.title,PAD,y);y+=70
  ctx.fillStyle=palette.muted;ctx.font='24px sans-serif'
@@ -108,7 +110,33 @@ export function drawCard(ctx:CardCtx,recipe:Parameters<typeof layoutCard>[0],lay
  ctx.strokeStyle=palette.line;ctx.lineWidth=1
  ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(CARD_W-PAD,y);ctx.stroke()
  ctx.fillStyle=palette.muted;ctx.font='22px sans-serif'
- ctx.fillText('家庭料理图鉴 · 把做过的味道收藏起来',PAD,y+24)
+ ctx.fillText('我的料理图鉴',PAD,y+24)
+}
+
+/** H5 导出：离屏 Canvas 全量合成（食材/步骤不截断）→ toBlob → 浏览器下载 */
+export async function exportCardH5(recipe:Parameters<typeof layoutCard>[0],coverUrl?:string):Promise<void>{
+ const canvas=document.createElement('canvas')
+ const ctx=canvas.getContext('2d')!
+ const dpr=Math.min(window.devicePixelRatio||1,3)
+ const measure:Measure=(text,font)=>{ctx.font=font;return ctx.measureText(text).width}
+ const layout=layoutCard(recipe,!!coverUrl,measure,{ingredients:200,steps:500,desc:60})
+ canvas.width=Math.round(CARD_W*dpr);canvas.height=Math.round(layout.height*dpr)
+ let cover:HTMLImageElement|undefined
+ if(coverUrl){
+  cover=await new Promise<HTMLImageElement>((resolve,reject)=>{
+   const img=new Image()
+   if(/^https?:/i.test(coverUrl))img.crossOrigin='anonymous'
+   img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('COVER_IMAGE_LOAD_FAILED'))
+   img.src=coverUrl
+  }).catch(()=>undefined)
+ }
+ drawCard(ctx,recipe,layout,dpr,cover)
+ const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/png'))
+ if(!blob)throw new Error('PNG_GENERATE_FAILED')
+ const url=URL.createObjectURL(blob)
+ const a=document.createElement('a')
+ a.href=url;a.download=`${recipe.title}-菜谱卡.png`;a.click()
+ setTimeout(()=>URL.revokeObjectURL(url),10000)
 }
 
 /** 获取页面内 Canvas 2D 节点（Taro 选择器） */

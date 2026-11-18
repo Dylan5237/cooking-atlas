@@ -7,6 +7,12 @@ page {
   font-size: 28rpx;
 }
 
+/* 桌面浏览器打开 H5 时居中限宽，保持手机版式 */
+@media (min-width: 640px) {
+  taro-page-core { max-width: 560px; margin: 0 auto; }
+  .tabbar { max-width: 560px; left: 50%; transform: translateX(-50%); }
+}
+
 button::after { border: 0; }
 
 /* 白屏诊断错误页（保留既有能力） */

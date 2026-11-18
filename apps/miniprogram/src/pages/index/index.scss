@@ -4,9 +4,15 @@
 .page{padding:24rpx $space-page 200rpx}
 .appbar{height:88rpx;display:flex;align-items:center;justify-content:space-between;padding:0 8rpx}
 .brand{display:flex;align-items:center;gap:10rpx;font-size:26rpx;font-weight:600;color:$ink}
-.brand-icon{width:40rpx;height:40rpx;border-radius:12rpx;background:$sage;display:flex;align-items:center;justify-content:center;font-size:22rpx}
-.meta-pills{display:flex;gap:14rpx;margin:18rpx 0 8rpx}
-.meta-pills .pill strong{font-size:30rpx;font-weight:650;margin-left:4rpx}
+.appbar-right{display:flex;align-items:center;gap:14rpx}
+.demo-badge{font-size:18rpx;color:$muted;border:1rpx solid $line;padding:6rpx 14rpx;border-radius:12rpx;background:$soft}
+
+/* ===== 菜品照片：真实照片 / 诚实缺图（v2） ===== */
+.real-photo{width:100%;height:100%;display:block}
+.no-photo{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative;background:$soft;color:$muted;overflow:hidden;box-sizing:border-box}
+.no-photo-label{position:static;font-size:20rpx;letter-spacing:2rpx;font-weight:400}
+.photo-corners{position:absolute;inset:20rpx;border:1rpx solid #cbd7c2;border-radius:12rpx;opacity:.75}
+.no-photo:after{content:'';position:absolute;inset:30rpx;border:1rpx dashed #cbd7c2;border-radius:8rpx;opacity:.6;pointer-events:none}
 
 /* ===== 叠卡（B 结构）：主卡 + 两张错位衬卡 ===== */
 .stack{height:636rpx;position:relative;display:flex;align-items:center;justify-content:center;margin:16rpx 0 0;perspective:2200rpx}
@@ -21,15 +27,13 @@
 .face.back{transform:rotateY(180deg);padding:36rpx;background:$surface}
 /* 翻面降级：不支持 preserve-3d 的环境由 JS 切 class */
 .hero-card.fade .card-rotor{transition:opacity 200ms}
-.ct-label{font-size:16rpx;letter-spacing:3rpx;color:$subtle}
+.ct-label{font-size:20rpx;letter-spacing:2rpx;color:$muted}
 .ct-no{font-size:20rpx;font-weight:700;color:$green}
 .card-top{position:absolute;top:32rpx;left:34rpx;right:34rpx;display:flex;justify-content:space-between;align-items:center;border-bottom:1rpx solid rgba(168,185,152,.4);padding-bottom:18rpx;z-index:2}
-.card-food{position:absolute;top:96rpx;left:30rpx;width:444rpx;height:416rpx;border-radius:16rpx}
-.card-food.contain{filter:drop-shadow(0 12rpx 6rpx rgba(71,81,50,.12))}
-.stamp{position:absolute;right:24rpx;top:110rpx;z-index:3;width:72rpx;height:72rpx;border-radius:50%;border:1rpx solid #819872;display:flex;align-items:center;justify-content:center;font-size:15rpx;line-height:1.4;text-align:center;color:$green;transform:rotate(9deg);background:rgba(251,248,238,.5)}
+.card-food{position:absolute;top:96rpx;left:30rpx;width:444rpx;height:314rpx;border-radius:16rpx;overflow:hidden;background:$soft}
 .card-title{position:absolute;left:34rpx;bottom:92rpx;font-size:44rpx;@include serif-title;color:$ink;z-index:2}
 .card-foot{position:absolute;left:34rpx;right:34rpx;bottom:26rpx;border-top:1rpx solid rgba(168,185,152,.5);display:flex;justify-content:space-between;padding-top:16rpx;font-size:18rpx;color:$muted;z-index:2}
-.back-label{font-size:16rpx;letter-spacing:3rpx;color:$subtle}
+.back-label{font-size:18rpx;letter-spacing:2rpx;color:$muted}
 .back-title{display:block;font-size:42rpx;@include serif-title;margin:18rpx 0 8rpx;color:$ink}
 .back-ingredients{display:flex;flex-direction:column;gap:8rpx;margin:18rpx 0;font-size:22rpx;color:$muted}
 .back-step{display:block;font-size:24rpx;line-height:1.8;color:#3f5a4e;margin-top:10rpx}
@@ -42,11 +46,10 @@
 .section-head{display:flex;justify-content:space-between;align-items:center;margin:34rpx 0 16rpx}
 .section-head .h3{margin:0}
 .mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:16rpx}
-.mini-card{background:$surface;border:1rpx solid $line;border-radius:24rpx;padding:18rpx;display:flex;flex-direction:column;gap:10rpx;box-sizing:border-box}
-.mini-card .serial{font-size:16rpx;letter-spacing:2rpx;color:$subtle}
-.mini-card image{width:100%;height:180rpx;border-radius:14rpx;background:$soft}
-.mini-card b{font-size:26rpx;font-weight:650;color:$ink}
-.mini-card small{font-size:20rpx;color:$muted}
+.mini-card{background:$surface;border:1rpx solid $line;border-radius:24rpx;padding:16rpx;display:flex;flex-direction:column;gap:10rpx;box-sizing:border-box}
+.mini-card .mini-photo{height:200rpx;border-radius:14rpx;overflow:hidden;background:$soft}
+.mini-title{font-size:26rpx;font-weight:650;color:$ink}
+.mini-sub{font-size:20rpx;color:$muted}
 .family-note{display:flex;align-items:center;justify-content:space-between;background:$sage;border-radius:22rpx;padding:20rpx 24rpx;margin-top:24rpx;font-size:24rpx;color:$green}
 
 /* 空状态 */
@@ -70,12 +73,12 @@
 .fan-card.fc-2{right:0;background:$rice;transform:rotate(13deg)}
 .fan-card .serial{position:absolute;left:24rpx;top:22rpx;font-size:16rpx;letter-spacing:2rpx;color:$muted;z-index:2}
 .fan-card .tag{position:absolute;right:20rpx;top:18rpx;font-size:16rpx;border:1rpx solid #a7b499;border-radius:20rpx;padding:6rpx 10rpx;background:rgba(251,248,238,.85);color:$green;z-index:2}
-.fan-card .fan-img{position:absolute;width:302rpx;height:302rpx;top:50rpx;left:9rpx;border-radius:16rpx}
+.fan-card .fan-img{position:absolute;width:302rpx;height:216rpx;top:50rpx;left:9rpx;border-radius:16rpx;overflow:hidden;background:$soft}
 .fan-card .fan-title{position:absolute;left:24rpx;bottom:22rpx;font-size:26rpx;font-weight:650;z-index:2}
 .draw-hint{font-size:20rpx;color:$muted;text-align:center;margin:20rpx 0 6rpx}
 .recipe-row{display:flex;align-items:center;gap:18rpx;border-bottom:1rpx solid $line;min-height:106rpx;padding:10rpx 0}
 .recipe-row:last-child{border-bottom:0}
-.recipe-row .thumb{width:88rpx;height:88rpx;border-radius:18rpx;background:$soft;flex:none}
+.recipe-row .thumb{width:88rpx;height:88rpx;border-radius:18rpx;background:$soft;flex:none;overflow:hidden}
 .recipe-row .copy{flex:1;min-width:0}
 .recipe-row .copy b{font-size:26rpx;font-weight:600;display:block}
 .recipe-row .copy small{font-size:20rpx;color:$muted;margin-top:4rpx;display:block}
@@ -87,9 +90,8 @@
 .shop-hero .count{font-size:92rpx;line-height:1.1;font-weight:500;letter-spacing:-4rpx;color:$ink}
 .shop-hero .count span{font-size:42rpx;color:#78917d}
 .shop-hero .mini{margin-top:10rpx}
-.meter{height:8rpx;border-radius:8rpx;background:#c6d7bf;overflow:hidden;width:264rpx;margin-top:24rpx}
+.meter{height:8rpx;border-radius:8rpx;background:#c6d7bf;overflow:hidden;width:100%;margin-top:24rpx}
 .meter i{display:block;height:100%;background:$green;transition:width 220ms}
-.shop-hero .bag{font-size:100rpx;transform:rotate(9deg);opacity:.9}
 .shop-head{display:flex;justify-content:space-between;align-items:center;margin:38rpx 0 18rpx;font-size:20rpx;color:$muted}
 .shop-group{border:1rpx solid $line;background:$surface;padding:0 26rpx;border-radius:34rpx}
 .shop-row{display:flex;align-items:center;gap:20rpx;border-bottom:1rpx solid $line;min-height:106rpx}
@@ -99,10 +101,9 @@
 .check{height:44rpx;width:44rpx;padding:0;background:none;border:1rpx solid #bccbb5;border-radius:14rpx;display:flex;align-items:center;justify-content:center;flex:none;font-size:24rpx}
 .check.done{background:$green;border-color:$green;color:#fffdf7}
 .shop-row.done .name{color:$subtle}
-.shop-row.bought .name text{text-decoration:line-through}
+.shop-row.bought .name{text-decoration:line-through}
 .qty{background:none;text-align:right;font-size:22rpx;line-height:1.6;padding:20rpx 0 20rpx 12rpx;min-height:80rpx;color:$muted}
-.at-home{display:flex;gap:16rpx;padding:26rpx;border:1rpx dashed #bdccaf;border-radius:28rpx;margin-top:28rpx;font-size:20rpx;color:$muted;line-height:1.9}
-.at-home .ic{font-size:36rpx;color:#809b72}
+.at-home{padding:26rpx;border:1rpx dashed #bdccaf;border-radius:28rpx;margin-top:28rpx;font-size:20rpx;color:$muted;line-height:1.9}
 
 /* ===== 我的 ===== */
 .profile-hero{display:flex;flex-direction:column;align-items:flex-start;gap:10rpx;margin-top:20rpx}
@@ -114,9 +115,9 @@
 
 /* ===== 底部导航 ===== */
 .tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(251,248,238,.96);backdrop-filter:blur(16px);border-top:1rpx solid $line;display:flex;padding-bottom:calc(14rpx + env(safe-area-inset-bottom));z-index:20}
-.tabbar .nav{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4rpx;padding:14rpx 0 6rpx;color:#9aa898;font-size:20rpx}
-.tabbar .nav .ic{font-size:36rpx;line-height:1}
+.tabbar .nav{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6rpx;padding:14rpx 0 6rpx;color:#9aa898;font-size:20rpx}
 .tabbar .nav.on{color:$green;font-weight:600}
+.tabbar .nav:not(.on) .icon{opacity:.72}
 
 /* 行动条（点菜/采购底部主操作） */
 .actionbar{position:fixed;left:0;right:0;bottom:calc(100rpx + env(safe-area-inset-bottom));padding:16rpx $space-page;z-index:19}
@@ -134,7 +135,7 @@
 .ing-line .q{color:$muted;text-align:right}
 .step-line{display:flex;gap:20rpx;font-size:24rpx;line-height:1.9;margin-bottom:20rpx}
 .step-line .n{font-size:20rpx;width:46rpx;height:46rpx;flex:none;border-radius:50%;background:$sage;display:flex;align-items:center;justify-content:center;margin-top:6rpx;color:$green;font-weight:600}
-.dish-large{width:100%;height:380rpx;border-radius:40rpx;background:$rice;margin-bottom:28rpx}
+.dish-large{width:100%;height:380rpx;border-radius:40rpx;background:$soft;margin-bottom:28rpx;overflow:hidden}
 .detail-meta{display:flex;gap:10rpx;flex-wrap:wrap;margin:20rpx 0}
 .sheet .cta{margin-top:26rpx}
 

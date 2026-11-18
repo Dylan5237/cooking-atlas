@@ -56,6 +56,39 @@ export async function uploadImage(filePath:string,spaceId:string):Promise<{key:s
  return JSON.parse(res.data)
 }
 
+// ---------- H5 浏览器媒体适配（微信能力留给下一阶段小程序适配） ----------
+export type H5Photo={dataUrl:string;file:File}
+
+/** 浏览器选图：本地校验类型与大小（与服务端一致：JPG/PNG/WebP ≤ 5MB），返回 dataURL + File */
+export function choosePhotoH5():Promise<H5Photo>{
+ return new Promise((resolve,reject)=>{
+  const input=document.createElement('input')
+  input.type='file';input.accept='image/jpeg,image/png,image/webp'
+  input.onchange=()=>{
+   const file=input.files&&input.files[0]
+   if(!file)return reject(new Error('NO_FILE'))
+   if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024)
+    return reject(new Error('PHOTO_INVALID'))
+   const reader=new FileReader()
+   reader.onload=()=>resolve({dataUrl:String(reader.result),file})
+   reader.onerror=()=>reject(new Error('PHOTO_READ_FAILED'))
+   reader.readAsDataURL(file)
+  }
+  input.click()
+ })
+}
+
+/** H5 直传：taro-h5 的 uploadFile 对 blob 路径不可靠，这里用 FormData + fetch */
+export async function uploadImageH5(file:File,spaceId:string):Promise<{key:string;contentType:string;size:number}>{
+ const form=new FormData()
+ form.append('spaceId',spaceId);form.append('file',file,(file as any).name||'photo.jpg')
+ const token=getAccessToken()
+ const res=await fetch(BASE+'/api/uploads',{method:'POST',headers:token?{Authorization:'Bearer '+token}:{},body:form})
+ const body=await res.json().catch(()=>null)
+ if(!res.ok)throw new Error((body as any)?.error||('UPLOAD_FAILED_'+res.status))
+ return body as {key:string;contentType:string;size:number}
+}
+
 /** 录音上传：与图片同等的空间隔离；服务端按音频魔数校验 */
 export async function uploadAudio(filePath:string,spaceId:string):Promise<{key:string;contentType:string;size:number}>{
  const token=getAccessToken()
