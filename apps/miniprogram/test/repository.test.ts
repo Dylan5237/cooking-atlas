@@ -257,7 +257,34 @@ describe('演示模式', () => {
     expect(s.recipes.length).toBeGreaterThan(0)
     expect(Taro.request).not.toHaveBeenCalled()
   })
-  it('写入操作拒绝（DEMO_MODE_READONLY）', async () => {
-    await expect(repository.createRecipe({title: 'x', ingredients: [], steps: []})).rejects.toThrow('DEMO_MODE_READONLY')
+  it('本地可写并持久化：createRecipe 不调 API，写入 localStorage', async () => {
+    const r = await repository.createRecipe({title: '演示新菜', ingredients: [], steps: []})
+    expect(Taro.request).not.toHaveBeenCalled()
+    expect(r.title).toBe('演示新菜')
+    const stored = storage.get('cooking-atlas-demo') as any
+    expect(stored.recipes.some((x: any) => x.title === '演示新菜')).toBe(true)
+    // 再次读取（模拟刷新）仍在，且种子样例未被清掉
+    const s = await repository.refresh()
+    expect(s.recipes.some(x => x.title === '演示新菜')).toBe(true)
+    expect(s.recipes.some(x => x.title === '番茄炒蛋')).toBe(true)
+  })
+  it('confirmPlan 记录逐项计划份数，generateShopping 按计划份数换算', async () => {
+    const plan = await repository.confirmPlan({title: '家庭晚餐', mealType: 'dinner', servings: 3, recipeIds: ['r3'], portions: {r3: 2}})
+    expect(plan.items[0].servings).toBe(4)        // 原配方份数
+    expect(plan.items[0].plannedServings).toBe(2) // 本项计划份数
+    const list = await repository.generateShopping(plan.id)
+    const ribs = list.items.find(i => i.name === '排骨')!
+    expect(ribs.quantity).toBe(250) // 500g × 2/4
+  })
+})
+describe('演示模式主食唯一性', () => {
+  beforeEach(() => { process.env.TARO_APP_DEMO_MODE = 'true' })
+  it('confirmPlan 对重复 recipeIds 去重：同一主食重复选取只建一项快照（大米 225g 而非 450g）', async () => {
+    await repository.refresh()
+    const plan = await repository.confirmPlan({title: '家庭晚餐', mealType: 'dinner', servings: 3, recipeIds: ['r4', 'r4'], portions: {r4: 3}})
+    expect(plan.items).toHaveLength(1)
+    expect(plan.items[0].plannedServings).toBe(3)
+    const list = await repository.generateShopping(plan.id)
+    expect(list.items.find(i => i.name === '大米')!.quantity).toBe(225) // 150g × 3/2
   })
 })

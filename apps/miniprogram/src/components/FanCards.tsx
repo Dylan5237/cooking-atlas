@@ -1,19 +1,20 @@
-import { View, Text, Image } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import type { Recipe } from '@cooking-atlas/shared'
-import { fallbackCover } from '../services/coverMap'
+import { dishRole } from '@cooking-atlas/meal-engine'
+import { Cover } from './Cover'
 
-/** 点菜扇形卡组：三张微旋转卡预览当前搭配（点击看详情）。 */
-export default function FanCards({ items, wishIds, onDetail }: {
+/** 点菜扇形卡组：三张微旋转卡预览当前搭配（点击看详情）；缺图如实标注，主食带标签。 */
+export default function FanCards({ items, wishIds, sampleIds = [], onDetail }: {
   items: Recipe[]
   wishIds: string[]
+  sampleIds?: string[]
   onDetail: (r: Recipe) => void
 }) {
   if (!items.length) return null
   const shown = items.slice(0, 3)
   return <View className='hand'>
     {shown.map((r, i) => {
-      const tag = wishIds.includes(r.id) ? '家人点菜' : r.category
-      const cover = r.coverUrl || fallbackCover(r.title, r.category)
+      const tag = wishIds.includes(r.id) ? '家人点菜' : dishRole(r) === 'staple' ? '主食' : r.category
       return <View
         key={r.id}
         className={`fan-card fc-${i}`}
@@ -21,9 +22,7 @@ export default function FanCards({ items, wishIds, onDetail }: {
       >
         <Text className='serial'>NO.{String(i + 1).padStart(3, '0')}</Text>
         <Text className='tag'>{tag}</Text>
-        {r.coverUrl
-          ? <Image className='fan-img' src={r.coverUrl} mode='aspectFill' />
-          : <Image className='fan-img contain' src={cover} mode='aspectFit' />}
+        <View className='fan-img'><Cover url={r.coverUrl} label='未上传照片' sample={sampleIds.includes(r.id)} /></View>
         <Text className='fan-title'>{r.title}</Text>
       </View>
     })}
