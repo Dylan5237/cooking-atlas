@@ -13,11 +13,20 @@ export default defineConfig({
   outputRoot: 'dist',
   framework: 'react',
   compiler: { type: 'webpack5', prebundle: { enable: false } },
+  // 静默 sass @import 弃用提示（Dart Sass 2.x 写法迁移前不阻塞构建）
+  sassLoaderOption: { sassOptions: { silenceDeprecations: ['import'] } },
   h5: {
     publicPath: '/',
     staticDirectory: 'static',
     router: { mode: 'hash' },
     esnextModules: ['@cooking-atlas'],
+    devServer: { client: { overlay: { errors: true, warnings: false } } },
+    compile: {
+      include: [
+        path.resolve(__dirname, '../../../packages'),
+        path.resolve(__dirname, '../../../node_modules/@cooking-atlas')
+      ]
+    },
   },
   mini: {
     postcss: { pxtransform: { enable: true } },
