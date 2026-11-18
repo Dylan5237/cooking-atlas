@@ -10,10 +10,11 @@ const amount = (q: number | null | undefined, u: string) =>
  * 图鉴主卡叠卡组：主卡 3D 翻面 + 两张错位衬卡（B 结构 × C 视觉，v2 文案）。
  * 制作次数直接用真实记录数，无记录不补 1；没有独立「拿手菜」标记功能就不展示印章。
  */
-export default function HeroStack({ recipe, serial, cooked, onDetail }: {
+export default function HeroStack({ recipe, serial, cooked, sample = false, onDetail }: {
   recipe: Recipe
   serial: string
   cooked: number
+  sample?: boolean
   onDetail: () => void
 }) {
   const [flipped, setFlipped] = useState(false)
@@ -30,7 +31,7 @@ export default function HeroStack({ recipe, serial, cooked, onDetail }: {
             <Text className='ct-label'>我的菜谱</Text>
             <Text className='ct-no'>NO. {serial}</Text>
           </View>
-          <View className='card-food'><Cover url={recipe.coverUrl} /></View>
+          <View className='card-food'><Cover url={recipe.coverUrl} sample={sample} /></View>
           <Text className='card-title'>{recipe.title}</Text>
           <View className='card-foot'>
             <Text>{recipe.category} · {recipe.cookingMinutes || '—'} 分钟</Text>

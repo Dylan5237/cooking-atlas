@@ -1,16 +1,16 @@
 import Taro from '@tarojs/taro'
 import type{Recipe,MealRequest,MealPlan,ShoppingList,Ingredient}from'@cooking-atlas/shared'
-import{demoRecipes}from'../state/demo'
+import{demoRecipes,demoSampleCoverIds}from'../state/demo'
 import{recommendMeal}from'@cooking-atlas/meal-engine'
 import{buildShoppingList}from'@cooking-atlas/shopping-engine'
 import{apiRequest,getActiveSpaceId,getAccessToken}from'./api'
 
 export type CookingLog={id:string;spaceId:string;recipeId:string;mealPlanId?:string|null;cookedAt:string;photos:string[];notes:string;rating?:number|null;createdById:string}
-export type Store={recipes:Recipe[];requests:MealRequest[];plan:MealPlan|null;shopping:ShoppingList|null;favoriteIds:string[];cookingLogs:CookingLog[]}
+export type Store={recipes:Recipe[];requests:MealRequest[];plan:MealPlan|null;shopping:ShoppingList|null;favoriteIds:string[];cookingLogs:CookingLog[];sampleCoverIds?:string[]}
 const KEY='cooking-atlas-demo'
 const empty:Store={recipes:[],requests:[],plan:null,shopping:null,favoriteIds:[],cookingLogs:[]}
 // 演示模式从空菜单开始：点菜→确认→采购的完整流程由本地引擎跑通并持久化
-const demoInitial:Store={...empty,recipes:demoRecipes}
+const demoInitial:Store={...empty,recipes:demoRecipes,sampleCoverIds:demoSampleCoverIds}
 
 export function isDemoMode(){return process.env.TARO_APP_DEMO_MODE==='true'}
 
@@ -22,7 +22,7 @@ function mapRequest(r:any):MealRequest{
  return{id:r.id,spaceId:r.spaceId,memberId:r.userId,mealDate:typeof r.mealDate==='string'?r.mealDate:new Date(r.mealDate).toISOString(),mealType:r.mealType,servings:r.servings,recipeIds:r.recipeIds||[],note:r.note||'',status:r.status,createdAt:typeof r.createdAt==='string'?r.createdAt:new Date(r.createdAt).toISOString()}
 }
 function mapPlan(p:any):MealPlan{
- return{id:p.id,spaceId:p.spaceId,title:p.title,mealType:p.mealType,servings:p.servings,status:p.status,items:(p.items||[]).map((x:any)=>({recipeId:x.recipeId,recipeTitle:x.recipeTitle,servings:x.servings,source:x.source,snapshotIngredients:x.snapshotIngredients||[],suggestionNote:x.suggestionNote,recipeVersion:x.recipeVersion})),createdAt:typeof p.createdAt==='string'?p.createdAt:new Date(p.createdAt).toISOString(),confirmedAt:p.confirmedAt?(typeof p.confirmedAt==='string'?p.confirmedAt:new Date(p.confirmedAt).toISOString()):undefined}
+ return{id:p.id,spaceId:p.spaceId,title:p.title,mealType:p.mealType,servings:p.servings,status:p.status,items:(p.items||[]).map((x:any)=>({recipeId:x.recipeId,recipeTitle:x.recipeTitle,servings:x.servings,plannedServings:x.plannedServings,source:x.source,snapshotIngredients:x.snapshotIngredients||[],suggestionNote:x.suggestionNote,recipeVersion:x.recipeVersion})),createdAt:typeof p.createdAt==='string'?p.createdAt:new Date(p.createdAt).toISOString(),confirmedAt:p.confirmedAt?(typeof p.confirmedAt==='string'?p.confirmedAt:new Date(p.confirmedAt).toISOString()):undefined}
 }
 function mapList(l:any):ShoppingList{
  return{id:l.id,spaceId:l.spaceId,mealPlanId:l.mealPlanId,title:l.title,status:l.status,items:l.items||[],createdAt:typeof l.createdAt==='string'?l.createdAt:new Date(l.createdAt).toISOString(),updatedAt:typeof l.updatedAt==='string'?l.updatedAt:new Date(l.updatedAt).toISOString()}
@@ -33,7 +33,16 @@ function mapLog(l:any):CookingLog{
 
 // ---------- 内存缓存：同步读（UI 渲染），异步刷新（bootstrap/写后） ----------
 let cache:Store=isDemoMode()?readDemo():empty
-function readDemo():Store{try{return Taro.getStorageSync(KEY)||demoInitial}catch{return demoInitial}}
+function readDemo():Store{
+ try{
+  const s=Taro.getStorageSync(KEY) as Store|null
+  if(!s||!Array.isArray(s.recipes))return demoInitial
+  // 种子演进：只补缺失的样例菜，不删用户已录入内容（不清 localStorage 升级）
+  const missing=demoRecipes.filter(r=>!s.recipes.some(x=>x.id===r.id))
+  const marked=new Set([...(s.sampleCoverIds||[]),...demoSampleCoverIds])
+  return missing.length||!s.sampleCoverIds?{...s,recipes:[...missing,...s.recipes],sampleCoverIds:[...marked]}:s
+ }catch{return demoInitial}
+}
 function writeDemo(s:Store){Taro.setStorageSync(KEY,s);return s}
 function spaceId(){const id=getActiveSpaceId();if(!id)throw new Error('NO_ACTIVE_SPACE');return id}
 
@@ -117,7 +126,7 @@ export const repository={
 
  async submitMealRequest(input:{mealType:'lunch'|'dinner';servings:number;recipeIds:string[];note?:string}):Promise<MealRequest>{
   if(isDemoMode()){
-   const req:MealRequest={id:'q'+Date.now().toString(36),spaceId:'family-demo',memberId:'demo-member',mealDate:new Date().toISOString(),mealType:input.mealType,servings:input.servings,recipeIds:input.recipeIds,note:input.note||'',status:'pending',createdAt:new Date().toISOString()}
+   const req:MealRequest={id:'q'+Date.now().toString(36),spaceId:'family-demo',memberId:'demo-member',mealDate:new Date().toISOString(),mealType:input.mealType,servings:input.servings,recipeIds:input.recipeIds,note:input.note||'',status:'submitted',createdAt:new Date().toISOString()}
    cache={...cache,requests:[req,...cache.requests]};writeDemo(cache);return req
   }
   const r=await apiRequest<any>('/api/meal-requests','POST',{spaceId:spaceId(),...input})
@@ -126,33 +135,49 @@ export const repository={
   return req
  },
 
- async recommend(input:{servings:number;mealType:'lunch'|'dinner';requestedRecipeIds?:string[];restrictions?:string[]}){
+ async recommend(input:{servings:number;mealType:'lunch'|'dinner';requestedRecipeIds?:string[];restrictions?:string[];staplePolicy?:'auto'|'none';stapleRecipeId?:string|null}){
   if(isDemoMode()){
    // 演示模式用本地配餐引擎（与服务端同一套规则），不冒充 AI
-   const rec=recommendMeal({recipes:cache.recipes,servings:input.servings,mealType:input.mealType,favoriteRecipeIds:cache.favoriteIds,recentRecipeIds:cache.cookingLogs.slice(0,5).map(l=>l.recipeId),requestedRecipeIds:input.requestedRecipeIds||[],restrictions:[],allowNewSuggestions:true})
-   return{items:rec.items.map(x=>({recipeId:x.recipe.id,title:x.title,source:x.source,servings:input.servings,snapshotIngredients:x.recipe.ingredients,recipeVersion:x.recipe.version||1,reason:x.reason})),warnings:rec.warnings,newDishSuggestions:rec.newDishSuggestions}
+   const rec=recommendMeal({recipes:cache.recipes,servings:input.servings,mealType:input.mealType,favoriteRecipeIds:cache.favoriteIds,recentRecipeIds:cache.cookingLogs.slice(0,5).map(l=>l.recipeId),requestedRecipeIds:input.requestedRecipeIds||[],restrictions:[],allowNewSuggestions:true,staplePolicy:input.staplePolicy,stapleRecipeId:input.stapleRecipeId??null})
+   return{items:rec.items.map(x=>({recipeId:x.recipe.id,title:x.title,source:x.source,servings:x.recipe.servings,snapshotIngredients:x.recipe.ingredients,recipeVersion:x.recipe.version||1,reason:x.reason})),warnings:rec.warnings,newDishSuggestions:rec.newDishSuggestions}
   }
   return apiRequest<{items:{recipeId:string;title:string;source:string;servings:number;snapshotIngredients:Ingredient[];recipeVersion:number;reason:string}[];warnings:string[];newDishSuggestions:string[]}>('/api/meal-recommendations','POST',{spaceId:spaceId(),favoriteRecipeIds:cache.favoriteIds,...input})
  },
 
- /** owner 确认菜单：服务端依据菜谱构建快照与版本，客户端只传 recipeIds；portions 仅演示模式生效 */
+ /**
+  * 换一组推荐（本地引擎，演示/真实 API 同一套确定性规则）：
+  * 明确选择（家人点菜+手动锁定）保证保留；当前已选但未锁定的菜作为 recent 惩罚，
+  * 有替代则被换掉，无替代自然保留。返回实际换掉的道数，由 UI 如实提示。
+  */
+ reroll(input:{servings:number;mealType:'lunch'|'dinner';protect:string[];current:string[];staplePolicy?:'auto'|'none';stapleRecipeId?:string|null}){
+  const rec=recommendMeal({
+   recipes:cache.recipes,servings:input.servings,mealType:input.mealType,
+   favoriteRecipeIds:cache.favoriteIds,
+   recentRecipeIds:input.current.filter(id=>!input.protect.includes(id)),
+   requestedRecipeIds:input.protect.filter(id=>cache.recipes.some(r=>r.id===id)),
+   restrictions:[],allowNewSuggestions:false,
+   staplePolicy:input.staplePolicy,stapleRecipeId:input.stapleRecipeId??null,
+  })
+  const ids=rec.items.map(x=>x.recipe.id)
+  const changed=input.current.filter(id=>!ids.includes(id)&&!input.protect.includes(id)).length
+  const kept=input.protect.filter(id=>ids.includes(id)).length
+  return{items:rec.items.map(x=>({recipeId:x.recipe.id,title:x.title,source:x.source,servings:x.recipe.servings,snapshotIngredients:x.recipe.ingredients,recipeVersion:x.recipe.version||1,reason:x.reason})),warnings:rec.warnings,newDishSuggestions:rec.newDishSuggestions,changed,keptProtected:kept}
+ },
+
+ /** owner 确认菜单：快照项 servings=原配方份数、plannedServings=本项计划份数（缺省整桌人数）。
+  *  API 与 demo 同一语义；采购换算 = 原用量 × plannedServings / servings（shopping-engine）。 */
  async confirmPlan(input:{title:string;mealType:'lunch'|'dinner';servings:number;recipeIds:string[];portions?:Record<string,number>}):Promise<MealPlan>{
   if(isDemoMode()){
    const now=new Date().toISOString()
    const items=input.recipeIds.map(id=>{
     const r=cache.recipes.find(x=>x.id===id)
-    const planned=input.portions?.[id]||input.servings
-    const origin=r?.servings||2
-    // 与服务端一致：快照为原配方用量；每道菜计划份数按 planned/origin 预缩放进快照，
-    // item.servings 对齐 plan.servings，让 buildShoppingList 得出该道菜的实际用量
-    const scale=planned/origin
-    const snapshot=(r?.ingredients||[]).map(i=>i.quantity===null||i.quantity===undefined?i:{...i,quantity:Number((i.quantity*scale).toFixed(2))})
-    return{recipeId:id,recipeTitle:r?.title||'已删除菜谱',servings:input.servings,source:'library',snapshotIngredients:snapshot,recipeVersion:r?.version||1}
+    return{recipeId:id,recipeTitle:r?.title||'已删除菜谱',servings:r?.servings||2,plannedServings:input.portions?.[id]||input.servings,source:'library' as const,snapshotIngredients:r?.ingredients||[],recipeVersion:r?.version||1}
    })
    const plan:MealPlan={id:'p'+Date.now().toString(36),spaceId:'family-demo',title:input.title,mealType:input.mealType,servings:input.servings,status:'confirmed',items,createdAt:now,confirmedAt:now}
    cache={...cache,plan};writeDemo(cache);return plan
   }
-  const p=await apiRequest<any>('/api/meal-plans','POST',{spaceId:spaceId(),...input})
+  const portions=Object.entries(input.portions||{}).map(([recipeId,servings])=>({recipeId,servings}))
+  const p=await apiRequest<any>('/api/meal-plans','POST',{spaceId:spaceId(),title:input.title,mealType:input.mealType,servings:input.servings,recipeIds:input.recipeIds,portions})
   const plan=mapPlan(p)
   cache={...cache,plan}
   return plan

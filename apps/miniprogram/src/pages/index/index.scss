@@ -8,7 +8,9 @@
 .demo-badge{font-size:18rpx;color:$muted;border:1rpx solid $line;padding:6rpx 14rpx;border-radius:12rpx;background:$soft}
 
 /* ===== 菜品照片：真实照片 / 诚实缺图（v2） ===== */
+.cover-wrap{width:100%;height:100%;position:relative;overflow:hidden}
 .real-photo{width:100%;height:100%;display:block}
+.sample-badge{position:absolute;left:10rpx;top:10rpx;z-index:3;background:rgba(251,248,238,.92);border:1rpx solid #d8c9a8;color:#79533b;font-size:16rpx;padding:4rpx 12rpx;border-radius:10rpx;letter-spacing:1rpx}
 .no-photo{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative;background:$soft;color:$muted;overflow:hidden;box-sizing:border-box}
 .no-photo-label{position:static;font-size:20rpx;letter-spacing:2rpx;font-weight:400}
 .photo-corners{position:absolute;inset:20rpx;border:1rpx solid #cbd7c2;border-radius:12rpx;opacity:.75}
@@ -59,11 +61,19 @@
 /* ===== 点菜扇形 ===== */
 .menu-title{font-size:60rpx;line-height:1.38;margin-top:14rpx}
 .menu-title em{font-style:normal;color:$green}
-.config{display:flex;justify-content:space-between;align-items:center;gap:10rpx;padding:20rpx 22rpx;background:$sage;border-radius:32rpx;margin-top:32rpx}
-.meal-chip{background:none;border:0;font-size:24rpx;color:$green;padding:8rpx 0}
-.meal-chip.on{font-weight:700}
+.config{display:flex;justify-content:space-between;align-items:center;gap:20rpx;padding:20rpx 22rpx;background:$sage;border-radius:32rpx;margin-top:32rpx}
+/* 午/晚餐分段控件：独立触区与选中态 */
+.segment{display:flex;background:#eef4e9;border-radius:999rpx;padding:6rpx;gap:8rpx}
+.seg-btn{padding:12rpx 30rpx;border-radius:999rpx;font-size:24rpx;color:$muted;line-height:1.4}
+.seg-btn.on{background:$surface;color:$green;font-weight:700;box-shadow:0 6rpx 14rpx -8rpx rgba(37,75,66,.35)}
 .people{display:flex;align-items:center;gap:14rpx;font-size:24rpx;color:$ink}
+.people .people-num{font-weight:700}
 .people button,.people .pbtn{height:56rpx;width:56rpx;border:1rpx solid #c4d0ba;background:$page;border-radius:50%;font-size:34rpx;line-height:1;display:flex;align-items:center;justify-content:center;color:$ink;padding:0}
+/* 主食行：配餐/一餐式主食选择入口 */
+.staple-row{display:flex;align-items:center;gap:16rpx;margin-top:20rpx;background:$surface;border:1rpx solid $line;border-radius:26rpx;padding:22rpx 26rpx}
+.staple-label{font-size:24rpx;color:$muted;flex:none}
+.staple-value{flex:1;font-size:26rpx;font-weight:600;color:$ink}
+.staple-arrow{color:$muted;font-size:26rpx}
 .family-request{display:flex;align-items:flex-start;gap:14rpx;font-size:20rpx;color:$muted;margin-top:24rpx;line-height:1.7}
 .avatar{width:46rpx;height:46rpx;border:3rpx solid $page;background:$peach;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:18rpx;color:#79533b}
 .hand{height:464rpx;position:relative;margin:24rpx -24rpx 0;overflow:hidden}
@@ -80,15 +90,22 @@
 .recipe-row:last-child{border-bottom:0}
 .recipe-row .thumb{width:88rpx;height:88rpx;border-radius:18rpx;background:$soft;flex:none;overflow:hidden}
 .recipe-row .copy{flex:1;min-width:0}
-.recipe-row .copy b{font-size:26rpx;font-weight:600;display:block}
-.recipe-row .copy small{font-size:20rpx;color:$muted;margin-top:4rpx;display:block}
+/* 行内标题/副文案用显式 class（H5 的 Text 不渲染 b/small 标签） */
+.row-title{font-size:26rpx;font-weight:600;display:block;color:$ink}
+.row-sub{font-size:20rpx;color:$muted;margin-top:4rpx;display:block}
 .row-action{width:64rpx;height:64rpx;border-radius:50%;background:$soft;color:$green;display:flex;align-items:center;justify-content:center;font-size:28rpx;flex:none}
-.portion-input{width:150rpx;border:1rpx solid #cad6bf;border-radius:16rpx;background:$surface;padding:10rpx 14rpx;font-size:24rpx;box-sizing:border-box;margin-top:6rpx}
+.portion-input{width:120rpx;border:1rpx solid #cad6bf;border-radius:16rpx;background:$surface;padding:10rpx 8rpx;font-size:24rpx;box-sizing:border-box;margin-top:6rpx;text-align:center}
+/* 主食选择弹层选项 */
+.staple-option{display:flex;align-items:center;gap:18rpx;padding:20rpx 0;border-bottom:1rpx solid $line}
+.staple-option:last-child{border-bottom:0}
+.radio{width:40rpx;height:40rpx;border-radius:50%;border:2rpx solid #b7c6b0;flex:none;box-sizing:border-box}
+.radio.on{border:12rpx solid $green}
 
 /* ===== 采购 ===== */
 .shop-hero{display:flex;justify-content:space-between;align-items:center;background:$sage;border-radius:40rpx;padding:36rpx;margin-top:34rpx}
 .shop-hero .count{font-size:92rpx;line-height:1.1;font-weight:500;letter-spacing:-4rpx;color:$ink}
-.shop-hero .count span{font-size:42rpx;color:#78917d}
+.count-num{font-size:92rpx}
+.count-total{font-size:42rpx;color:#78917d}
 .shop-hero .mini{margin-top:10rpx}
 .meter{height:8rpx;border-radius:8rpx;background:#c6d7bf;overflow:hidden;width:100%;margin-top:24rpx}
 .meter i{display:block;height:100%;background:$green;transition:width 220ms}
@@ -110,8 +127,9 @@
 .profile-hero .avatar{width:96rpx;height:96rpx;font-size:34rpx;margin-bottom:8rpx}
 .profile-stat{display:flex;gap:48rpx;margin-top:26rpx}
 .profile-stat span{display:flex;flex-direction:column;gap:4rpx}
-.profile-stat b{font-size:44rpx;@include serif-title;color:$ink}
-.profile-stat small{font-size:20rpx;color:$muted}
+.stat-num{font-size:44rpx;@include serif-title;color:$ink;display:block}
+.stat-sub{font-size:20rpx;color:$muted}
+.stars{color:#d99a3c;flex:none}
 
 /* ===== 底部导航 ===== */
 .tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(251,248,238,.96);backdrop-filter:blur(16px);border-top:1rpx solid $line;display:flex;padding-bottom:calc(14rpx + env(safe-area-inset-bottom));z-index:20}
@@ -138,5 +156,9 @@
 .dish-large{width:100%;height:380rpx;border-radius:40rpx;background:$soft;margin-bottom:28rpx;overflow:hidden}
 .detail-meta{display:flex;gap:10rpx;flex-wrap:wrap;margin:20rpx 0}
 .sheet .cta{margin-top:26rpx}
+/* 记录制作：评分行 */
+.star-row{display:flex;align-items:center;margin-top:20rpx}
+.star{font-size:40rpx;color:#cfd8c8;margin-right:10rpx;line-height:1}
+.star.on{color:#d99a3c}
 
 /* 轮盘历史保留位（不再使用） */

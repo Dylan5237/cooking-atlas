@@ -5,17 +5,21 @@ import { repository, isDemoMode } from '../../services/repository'
 import { ensureSession, joinSpaceByCode, uploadImage, resolveImageUrl, getActiveSpaceId, apiRequest, loginWithTrialCode, choosePhotoH5, uploadImageH5 } from '../../services/api'
 import { startRecording, stopRecording, transcribeRecording, isRecording } from '../../services/recorder'
 import { CARD_W, layoutCard, drawCard, getCardCanvas, loadCoverImage, exportCardImage, saveCardToAlbum, exportCardH5 } from '../../services/card'
+import { mapDraftToForm, parseIngredients } from '../../services/draft'
+import { dishRole, stapleKind } from '@cooking-atlas/meal-engine'
 import HeroStack from '../../components/HeroStack'
 import FanCards from '../../components/FanCards'
 import Sheet from '../../components/Sheet'
 import Icon from '../../components/Icon'
 import { Cover } from '../../components/Cover'
-import type { Recipe, Ingredient } from '@cooking-atlas/shared'
+import type { Recipe } from '@cooking-atlas/shared'
 import './index.scss'
 
 type Tab = 'home' | 'menu' | 'shop' | 'profile'
-type SheetKind = null | 'detail' | 'add' | 'browse' | 'review' | 'log'
+type SheetKind = null | 'detail' | 'add' | 'browse' | 'review' | 'log' | 'staple'
 type Role = 'owner' | 'member'
+/** 封面编辑意图：keep 维持原样（API 不传字段）/ replace 已换新照 / clear 清除 */
+type CoverAction = 'keep' | 'replace' | 'clear'
 
 const CATS = ['全部', '荤菜', '素菜', '汤羹', '主食', '家常菜', '甜品']
 const SHOP_GROUPS = ['主食与肉蛋', '蔬菜与配料', '调味与其他']
@@ -24,6 +28,18 @@ const errText = (e: unknown) => String((e as Error)?.message || e)
 const amount = (q: number | null | undefined, u: string) =>
   q == null ? (u === '适量' ? '适量' : '待核对') : `${Number(q.toFixed(2))} ${u}`
 const isH5 = process.env.TARO_ENV === 'h5'
+const STAPLE_SIDE_LABEL: Record<string, string> = { side: '配餐主食', meal: '一餐式主食' }
+/** 一餐构成文案：区分主食与菜肴，一餐式主食为主时点明「主食主体 + 配菜」 */
+function compositionText(items: { id?: string; title: string; category?: string }[], lookupCategory?: (id?: string) => string | undefined): string {
+  const cat = (x: { id?: string; category?: string }) => x.category || (x.id ? lookupCategory?.(x.id) : undefined) || '家常菜'
+  const staples = items.filter(x => dishRole({ title: x.title, category: cat(x) }) === 'staple')
+  const dishes = items.filter(x => dishRole({ title: x.title, category: cat(x) }) !== 'staple')
+  if (staples.some(s => stapleKind({ title: s.title, category: cat(s) }) === 'meal')) {
+    const names = staples.map(s => s.title).join('、')
+    return dishes.length ? `主食 ${names} + ${dishes.length} 道配菜` : `主食 ${names}`
+  }
+  return `${dishes.length} 道菜${staples.length ? ` + ${staples.length} 份主食` : ''}`
+}
 
 interface Session {
   user: { id: string; displayName?: string }
@@ -55,6 +71,7 @@ export default function Index() {
   const [aiText, setAiText] = useState('')
   const [aiImageKey, setAiImageKey] = useState('')
   const [aiPreview, setAiPreview] = useState('')
+  const [coverAction, setCoverAction] = useState<CoverAction>('keep')
   const [mTitle, setMTitle] = useState('')
   const [mDesc, setMDesc] = useState('')
   const [mIng, setMIng] = useState('')
@@ -70,10 +87,17 @@ export default function Index() {
   const [portions, setPortions] = useState<Record<string, number>>({})
   const [orderNote, setOrderNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // 手动锁定（加一道/详情加入/主食选择）：换推荐时保证保留
+  const [manualPicks, setManualPicks] = useState<string[]>([])
+  // 主食意图：stapleId=明确选择的主食；stapleOff=本餐不安排；两者皆空=自动搭配
+  const [stapleId, setStapleId] = useState<string | null>(null)
+  const [stapleOff, setStapleOff] = useState(false)
   // 录音 / 卡牌
   const [recording, setRecording] = useState(false)
   const [cardBusy, setCardBusy] = useState(false)
   // 制作记录
+  const [logDishIds, setLogDishIds] = useState<string[]>([])
+  const [logRating, setLogRating] = useState(0)
   const [logNotes, setLogNotes] = useState('')
   // 试用码
   const [trialRequired, setTrialRequired] = useState(false)
@@ -86,6 +110,7 @@ export default function Index() {
   const recipes = store.recipes
   const hero = recipes.length ? recipes[heroIdx % recipes.length] : null
   const heroSerial = String(((heroIdx % Math.max(recipes.length, 1)) + 1)).padStart(3, '0')
+  const isSampleCover = (id: string) => isDemoMode() && (store.sampleCoverIds || []).includes(id)
 
   /* ---------------- 会话 ---------------- */
   useEffect(() => {
@@ -134,13 +159,49 @@ export default function Index() {
     try { await repository.toggleFavorite(recipeId); refresh() } catch (e) { Taro.showToast({ title: errText(e), icon: 'none' }) }
   }
 
+  const addManualPick = (id: string) => setManualPicks(p => p.includes(id) ? p : [...p, id])
+
   const pickToOrder = (r: Recipe) => {
     if (!chosen.includes(r.id)) {
       setChosen(c => [...c, r.id])
       setPortions(p => ({ ...p, [r.id]: people }))
     }
+    addManualPick(r.id)
     setSheet(null); setTab('menu')
     Taro.showToast({ title: '已加入点菜：' + r.title, icon: 'none' })
+  }
+
+  /* ---------------- 主食选择 ---------------- */
+  const stapleRecipes = recipes.filter(r => dishRole(r) === 'staple')
+  const wishIds = [...new Set(store.requests.flatMap(q => q.recipeIds))]
+  const currentStaple = chosen.map(id => recipes.find(r => r.id === id)).filter(Boolean as any as (x: Recipe | undefined) => x is Recipe)
+    .find(r => dishRole(r) === 'staple')
+  const stapleLabel = stapleOff ? '本餐不安排' : currentStaple?.title || '未选择（自动搭配）'
+
+  /** 主食三态选择：某道主食 / 自动搭配 / 本餐不安排；家人点的主食不被移除 */
+  const pickStaple = (mode: 'auto' | 'off' | string) => {
+    const dropStaples = (ids: string[]) => ids.filter(id => {
+      const r = recipes.find(x => x.id === id)
+      return !r || dishRole(r) !== 'staple' || wishIds.includes(id)
+    })
+    if (mode === 'auto') {
+      setChosen(dropStaples)
+      setManualPicks(dropStaples)
+      setStapleId(null); setStapleOff(false)
+    } else if (mode === 'off') {
+      setChosen(dropStaples)
+      setManualPicks(dropStaples)
+      setStapleId(null); setStapleOff(true)
+      Taro.showToast({ title: '本餐不安排主食', icon: 'none' })
+    } else {
+      const r = recipes.find(x => x.id === mode)
+      if (!r) return
+      setChosen(c => [...dropStaples(c), r.id])
+      setManualPicks(p => [...dropStaples(p), r.id])
+      setPortions(p => ({ ...p, [r.id]: p[r.id] || people }))
+      setStapleId(r.id); setStapleOff(false)
+    }
+    setSheet(null)
   }
 
   /* ---------------- 录入 ---------------- */
@@ -151,11 +212,13 @@ export default function Index() {
       setMIng(r.ingredients.map(i => `${i.name}：${i.quantity ?? ''}${i.unit}`).join('\n'))
       setMSteps((r.steps || []).map(s => s.content).join('\n'))
       setMServings(String(r.servings || 2)); setMMinutes(String(r.cookingMinutes || 0)); setMCategory(r.category || '家常菜')
-      setAiPreview(r.coverUrl || '')
+      // 每次编辑初始化封面状态：未换新照前不携带任何残留上传 key
+      setAiImageKey(''); setAiPreview(r.coverUrl || ''); setCoverAction('keep')
     } else {
       setEditId(''); setImportMode('ai')
       setAiTitle(''); setAiText(''); setAiImageKey(''); setAiPreview('')
       setMTitle(''); setMDesc(''); setMIng(''); setMSteps(''); setMServings('2'); setMMinutes('15'); setMCategory('家常菜')
+      setCoverAction('keep')
     }
     setSheet('add')
   }
@@ -165,19 +228,21 @@ export default function Index() {
       if (isH5) {
         // 浏览器选图：本地校验；演示模式仅本地预览（不冒充已上传）
         const photo = await choosePhotoH5()
-        if (isDemoMode()) { setAiPreview(photo.dataUrl); return }
+        setAiPreview(photo.dataUrl); setCoverAction('replace')
+        if (isDemoMode()) return
         Taro.showLoading({ title: '上传中' })
         const up = await uploadImageH5(photo.file, getActiveSpaceId())
-        setAiImageKey(up.key); setAiPreview(photo.dataUrl)
+        setAiImageKey(up.key)
         Taro.hideLoading(); Taro.showToast({ title: '照片已上传', icon: 'success' })
         return
       }
       const res = await Taro.chooseImage({ count: 1, sizeType: ['compressed'], sourceType: ['album', 'camera'] })
       const local = res.tempFilePaths[0]
-      if (isDemoMode()) { setAiPreview(local); return }
+      setAiPreview(local); setCoverAction('replace')
+      if (isDemoMode()) return
       Taro.showLoading({ title: '上传中' })
       const up = await uploadImage(local, getActiveSpaceId())
-      setAiImageKey(up.key); setAiPreview(local)
+      setAiImageKey(up.key)
       Taro.hideLoading(); Taro.showToast({ title: '照片已上传', icon: 'success' })
     } catch (e) {
       Taro.hideLoading()
@@ -187,25 +252,27 @@ export default function Index() {
     }
   }
 
+  const clearCover = () => { setAiPreview(''); setAiImageKey(''); setCoverAction('clear') }
+
   const parseAI = async () => {
     if (isDemoMode()) { Taro.showToast({ title: '演示模式未接入 AI，请直接手动填写', icon: 'none' }); setImportMode('manual'); return }
     if (!aiTitle.trim() && !aiImageKey) { Taro.showToast({ title: '请先写菜名或上传照片', icon: 'none' }); return }
     try {
       Taro.showLoading({ title: 'AI 整理中' })
       const res = await apiRequest<{ draft: any }>('/api/ai/recipe-draft', 'POST', { spaceId: getActiveSpaceId(), text: (aiTitle ? `菜名：${aiTitle}\n` : '') + aiText, imageKey: aiImageKey || undefined })
-      const d = res.draft || {}
-      setMTitle(d.title || aiTitle)
-      setMDesc((d.steps || []).map((x: any) => x.content).join('\n') || aiText)
-      setMIng((d.ingredients || []).map((x: any) => x.name + '：' + (x.quantity === null || x.quantity === undefined ? '' : x.quantity) + (x.unit || '待补充')).join('\n'))
+      // 字段对位映射：步骤进步骤、心得进心得；未知留空待核对
+      const form = mapDraftToForm(res.draft || {}, aiTitle)
+      setMTitle(form.title)
+      setMCategory(form.category)
+      setMServings(form.servings)
+      setMMinutes(form.minutes)
+      setMIng(form.ingredientsText)
+      setMSteps(form.stepsText)
+      setMDesc(form.note)
       setImportMode('manual')
       Taro.hideLoading(); Taro.showToast({ title: '草稿已生成，请核对', icon: 'none' })
     } catch (e) { Taro.hideLoading(); Taro.showModal({ title: 'AI 暂不可用', content: errText(e) + '（输入已保留，可切手动）', showCancel: false }) }
   }
-
-  const parseIngredients = (raw: string): Ingredient[] => raw.split('\n').map(x => x.trim()).filter(Boolean).map(x => {
-    const parts = x.split(/[：:]/), a = (parts.slice(1).join(':') || '').trim(), m = a.match(/^(\d+(?:\.\d+)?)\s*(.*)$/)
-    return { name: parts[0].trim(), quantity: m ? Number(m[1]) : null, unit: m ? (m[2] || '待补充') : (a || '待补充') }
-  })
 
   const saveRecipe = async () => {
     if (!isOwner) { Taro.showToast({ title: '仅掌勺者可录入', icon: 'none' }); return }
@@ -215,18 +282,18 @@ export default function Index() {
     const steps = mSteps.split('\n').map(s => s.trim()).filter(Boolean).map(content => ({ content }))
     const payload = {
       title: mTitle.trim(), category: mCategory,
-      coverKey: isDemoMode() ? undefined : (aiImageKey || undefined),
-      coverUrl: isDemoMode() ? (aiPreview || undefined) : undefined,
+      // 封面三态：replace 换新（API 用 key / demo 用 dataURL）、clear 清除、keep 不动原封面
+      coverKey: isDemoMode() || coverAction !== 'replace' ? undefined : (aiImageKey || undefined),
+      coverUrl: isDemoMode() ? (coverAction === 'replace' ? aiPreview : coverAction === 'clear' ? '' : undefined) : undefined,
       servings: Math.max(1, Number(mServings) || 2), cookingMinutes: Number(mMinutes) || 0,
       difficulty: '待补充', description: mDesc, ingredients, steps,
     }
+    // API 编辑：clear 时显式传 null 让服务端移除封面；keep 时不传字段
+    const apiPayload = editId && coverAction === 'clear' ? { ...payload, coverKey: null } : payload
     try {
       setBusy(true)
-      if (editId) {
-        await repository.updateRecipe(editId, payload as any)
-      } else {
-        await repository.createRecipe(payload as any)
-      }
+      if (editId) await repository.updateRecipe(editId, apiPayload as any)
+      else await repository.createRecipe(payload as any)
       await repository.refresh(); refresh()
       setHeroIdx(0); setSheet(null); setTab('home')
       Taro.showToast({ title: editId ? '已更新这张卡' : '新卡已收进图鉴', icon: 'success' })
@@ -240,18 +307,47 @@ export default function Index() {
     setPortions(p => { const n = { ...p }; for (const k of Object.keys(n)) n[k] = next; return n })
   }
 
+  /** 明确选择（家人点菜 + 手动锁定）作为推荐必保项；主食意图一并传入 */
+  const stapleIntent = () => ({ staplePolicy: stapleOff ? 'none' as const : 'auto' as const, stapleRecipeId: stapleId })
+
   const recommend = async () => {
     try {
       setBusy(true)
-      // 优先保留家人点菜，再按结构补齐
-      const wishIds = [...new Set(store.requests.flatMap(q => q.recipeIds))].filter(id => recipes.some(r => r.id === id))
-      const rec = await repository.recommend({ servings: people, mealType: meal, requestedRecipeIds: wishIds.length ? wishIds : chosen })
-      setChosen(rec.items.map(x => x.recipeId))
-      setPortions(Object.fromEntries(rec.items.map(x => [x.recipeId, people])))
+      const protect = [...new Set([...wishIds, ...manualPicks])]
+      const rec = await repository.recommend({
+        servings: people, mealType: meal,
+        requestedRecipeIds: protect.filter(id => recipes.some(r => r.id === id)),
+        ...stapleIntent(),
+      })
+      const ids = rec.items.map(x => x.recipeId)
+      setChosen(ids)
+      setPortions(Object.fromEntries(ids.map(id => [id, people])))
       refresh()
-      Taro.showToast({ title: `已保留 ${wishIds.length} 道家人点菜，配好 ${rec.items.length} 道`, icon: 'none' })
+      // 按实际结果报告：保留数来自真实交集，主食按结果统计
+      const kept = protect.filter(id => ids.includes(id)).length
+      const stapleCount = rec.items.filter(x => dishRole(recipes.find(r => r.id === x.recipeId) || { title: x.title, category: '' }) === 'staple').length
+      const suffix = protect.length > kept ? `，${protect.length - kept} 项因冲突未纳入` : ''
+      Taro.showToast({ title: `配好 ${rec.items.length} 项（主食 ${stapleCount}）· 保留明确选择 ${kept} 项${suffix}`, icon: 'none' })
     } catch (e) {
       Taro.showToast({ title: '推荐失败：' + errText(e), icon: 'none' })
+    } finally { setBusy(false) }
+  }
+
+  const reroll = async () => {
+    try {
+      setBusy(true)
+      const protect = [...new Set([...wishIds, ...manualPicks])]
+      const rec = repository.reroll({
+        servings: people, mealType: meal, protect,
+        current: chosen, ...stapleIntent(),
+      })
+      const ids = rec.items.map(x => x.recipeId)
+      setChosen(ids)
+      setPortions(Object.fromEntries(ids.map(id => [id, people])))
+      if (rec.changed > 0) Taro.showToast({ title: `已换 ${rec.changed} 道，保留明确选择 ${rec.keptProtected} 项`, icon: 'none' })
+      else Taro.showToast({ title: '没有可换的搭配（同类候选不足），已保留当前选择', icon: 'none' })
+    } catch (e) {
+      Taro.showToast({ title: '换组失败：' + errText(e), icon: 'none' })
     } finally { setBusy(false) }
   }
 
@@ -261,7 +357,7 @@ export default function Index() {
     try {
       setBusy(true)
       await repository.submitMealRequest({ mealType: meal, servings: people, recipeIds: chosen, note: orderNote })
-      setChosen([]); setOrderNote(''); refresh()
+      setChosen([]); setOrderNote(''); setManualPicks([]); setStapleId(null); setStapleOff(false); refresh()
       Taro.showToast({ title: '已提交点菜，等待掌勺者确认', icon: 'success' })
     } catch (e) { Taro.showToast({ title: '提交失败：' + errText(e), icon: 'none' }) } finally { setBusy(false) }
   }
@@ -278,6 +374,7 @@ export default function Index() {
       // 菜单确认后立即按快照生成/同步采购清单
       await repository.generateShopping(plan.id)
       refresh(); setSheet(null); setTab('shop')
+      setChosen([]); setManualPicks([]); setStapleId(null); setStapleOff(false)
       Taro.showToast({ title: '菜单已确认，清单已生成', icon: 'success' })
     } catch (e) { Taro.showToast({ title: '确认失败：' + errText(e), icon: 'none' }) } finally { setBusy(false) }
   }
@@ -357,16 +454,27 @@ export default function Index() {
     } finally { setCardBusy(false) }
   }
 
+  const openLog = () => {
+    if (!plan) return
+    setLogDishIds(plan.items.map(i => i.recipeId).filter(Boolean) as string[])
+    setLogRating(0); setLogNotes('')
+    setSheet('log')
+  }
+
+  /** 制作记录：用户明确勾选本次做过的菜；未评分留空，不替用户打分 */
   const saveLog = async () => {
     if (!plan) return
+    if (!logDishIds.length) { Taro.showToast({ title: '请勾选本次做过的菜', icon: 'none' }); return }
     try {
       setBusy(true)
-      await repository.addCookingLog({
-        recipeId: plan.items[0]?.recipeId || recipes[0]?.id || '',
-        mealPlanId: plan.id, notes: logNotes, rating: 5, photos: [],
-      })
+      for (const recipeId of logDishIds) {
+        await repository.addCookingLog({
+          recipeId, mealPlanId: plan.id, notes: logNotes,
+          rating: logRating > 0 ? logRating : undefined, photos: [],
+        })
+      }
       setLogNotes(''); setSheet(null); refresh()
-      Taro.showToast({ title: '制作记录已保存', icon: 'success' })
+      Taro.showToast({ title: `已记录 ${logDishIds.length} 道菜的制作`, icon: 'success' })
     } catch (e) { Taro.showToast({ title: '保存失败：' + errText(e), icon: 'none' }) } finally { setBusy(false) }
   }
 
@@ -411,7 +519,6 @@ export default function Index() {
   }))
 
   /* ================= 渲染 ================= */
-  const wishIds = [...new Set(store.requests.flatMap(q => q.recipeIds))]
   const chosenRecipes = chosen.map(id => recipes.find(r => r.id === id)).filter(Boolean) as Recipe[]
   const browseList = recipes.filter(r =>
     (browseCat === '全部' || r.category === browseCat) && r.title.includes(browseQuery))
@@ -420,6 +527,10 @@ export default function Index() {
   const shopTotal = shopping ? shopping.items.length : 0
   const groupOf = (name: string) => /肉|排|鸡|鱼|牛|虾|蛋|面|米|饭/.test(name) ? '主食与肉蛋' : /油|盐|酱|醋|糖|椒|料|酒/.test(name) ? '调味与其他' : '蔬菜与配料'
   const heroCooked = hero ? store.cookingLogs.filter(l => l.recipeId === hero.id).length : 0
+  const chosenComposition = compositionText(chosenRecipes.map(r => ({ id: r.id, title: r.title, category: r.category })))
+  const planComposition = plan ? compositionText(
+    plan.items.map(i => ({ id: i.recipeId, title: i.recipeTitle })),
+    id => recipes.find(r => r.id === id)?.category) : ''
 
   return <View className='page'>
     {/* ===== 顶部品牌 ===== */}
@@ -451,6 +562,7 @@ export default function Index() {
         recipe={recipeWithCover(hero)}
         serial={heroSerial}
         cooked={heroCooked}
+        sample={isSampleCover(hero.id)}
         onDetail={() => openDetail(recipeWithCover(hero))}
       />}
       <View className='paired'>
@@ -466,7 +578,7 @@ export default function Index() {
       <View className='mini-grid'>
         {(favorites.length ? favorites : recipes).slice(0, 2).map(r => (
           <View key={r.id} className='mini-card' onClick={() => openDetail(recipeWithCover(r))}>
-            <View className='mini-photo'><Cover url={recipeWithCover(r).coverUrl} /></View>
+            <View className='mini-photo'><Cover url={recipeWithCover(r).coverUrl} sample={isSampleCover(r.id)} /></View>
             <Text className='mini-title'>{r.title}</Text>
             <Text className='mini-sub'>{r.cookingMinutes || '—'} 分钟 · {r.category}</Text>
           </View>
@@ -483,42 +595,50 @@ export default function Index() {
       <Text className='h2 menu-title'>{isOwner ? (meal === 'dinner' ? '今晚吃什么' : '午餐吃什么') : '我来点菜'}</Text>
       <Text className='subtitle'>{isOwner ? '按人数搭配，也可以自己选' : '选好后提交，交给掌勺者安排'}</Text>
       <View className='config'>
-        <View className='meal-chips'>
-          <Text className={`meal-chip ${meal === 'lunch' ? 'on' : ''}`} onClick={() => setMeal('lunch')}>午餐</Text>
-          <Text className={`meal-chip ${meal === 'dinner' ? 'on' : ''}`} onClick={() => setMeal('dinner')}>晚餐</Text>
+        <View className='segment'>
+          <Text className={`seg-btn ${meal === 'lunch' ? 'on' : ''}`} onClick={() => setMeal('lunch')}>午餐</Text>
+          <Text className={`seg-btn ${meal === 'dinner' ? 'on' : ''}`} onClick={() => setMeal('dinner')}>晚餐</Text>
         </View>
         <View className='people'>
           <Text className='pbtn' onClick={() => bumpPeople(-1)}>−</Text>
-          <Text style={{ fontWeight: 700 }}>{people} 人</Text>
+          <Text className='people-num'>{people} 人</Text>
           <Text className='pbtn' onClick={() => bumpPeople(1)}>＋</Text>
         </View>
+      </View>
+      <View className='staple-row' onClick={() => setSheet('staple')}>
+        <Text className='staple-label'>主食</Text>
+        <Text className='staple-value'>{stapleLabel}</Text>
+        <Text className='staple-arrow'>›</Text>
       </View>
       <View className='family-request'>
         <Text className='avatar'>家</Text>
         <Text style={{ flex: 1 }}>{wishTitles.length ? `家人点的菜：${wishTitles.slice(0, 4).join('、')}` : '还没有家人点菜，先选一两道喜欢的。'}</Text>
       </View>
       {chosenRecipes.length
-        ? <FanCards items={chosenRecipes.map(recipeWithCover)} wishIds={wishIds} onDetail={openDetail} />
+        ? <FanCards items={chosenRecipes.map(recipeWithCover)} wishIds={wishIds} sampleIds={store.sampleCoverIds || []} onDetail={openDetail} />
         : <View className='empty' style={{ padding: '40rpx 20rpx' }}>
             <Text className='subtitle'>先从图鉴挑几道想吃的，{'\n'}或让推荐来一桌搭配。</Text>
           </View>}
-      <Text className='draw-hint'>保留家人点的菜，再补充其他搭配</Text>
-      <Button className='cta' onClick={recommend} loading={busy}>
+      <Text className='draw-hint'>保留家人点的菜和手动选择，再补充其他搭配</Text>
+      <Button className='cta' onClick={chosenRecipes.length ? reroll : recommend} loading={busy}>
         {chosenRecipes.length ? '换一组推荐' : '推荐一桌菜'} <Icon name='shuffle' size={15} />
       </Button>
       <View className='panel'>
         <View className='panel-top'>
-          <Text>{isOwner ? '待确认菜单' : '我想吃这些'}</Text>
+          <Text>{isOwner ? `待确认菜单${chosenRecipes.length ? `（${chosenComposition}）` : ''}` : '我想吃这些'}</Text>
           <Text className='textbtn' onClick={() => { setBrowseMode('pick'); setSheet('browse') }}>＋ 加一道</Text>
         </View>
-        {chosenRecipes.map(r => <View className='recipe-row' key={r.id}>
-          <View className='thumb'><Cover url={recipeWithCover(r).coverUrl} label='未上传照片' /></View>
-          <View className='copy'>
-            <Text style={{ fontWeight: 600 }}>{r.title}</Text>
-            <Text className='mini' style={{ marginTop: '4rpx' }}>{wishIds.includes(r.id) ? '家人点菜 · 重新推荐时保留' : '已收录菜谱'}</Text>
+        {chosenRecipes.map(r => {
+          const isWish = wishIds.includes(r.id), isManual = manualPicks.includes(r.id), isStaple = dishRole(r) === 'staple'
+          return <View className='recipe-row' key={r.id}>
+            <View className='thumb'><Cover url={recipeWithCover(r).coverUrl} label='未上传照片' sample={isSampleCover(r.id)} /></View>
+            <View className='copy'>
+              <Text className='row-title'>{r.title}</Text>
+              <Text className='row-sub'>{isWish ? '家人点菜 · 重新推荐时保留' : isManual ? '手动选择 · 保留' : isStaple ? '主食' : '已收录菜谱'}</Text>
+            </View>
+            <View className='row-action' onClick={() => setChosen(c => c.filter(x => x !== r.id))}><Text>✕</Text></View>
           </View>
-          <View className='row-action' onClick={() => setChosen(c => c.filter(x => x !== r.id))}><Text>✕</Text></View>
-        </View>)}
+        })}
         {!chosenRecipes.length && <Text className='mini'>还没有选择菜品。</Text>}
       </View>
       {!isOwner && <Input className='field' placeholder='给掌勺者的备注：少辣、想喝汤…' value={orderNote} onInput={e => setOrderNote(e.detail.value)} style={{ marginTop: '20rpx' }} />}
@@ -538,10 +658,10 @@ export default function Index() {
         <Text className='h2'>采购清单</Text>
         <Text className='pill'>{plan.servings} 人份</Text>
       </View>
-      <Text className='subtitle'>{plan.title} · {plan.items.length} 道菜</Text>
+      <Text className='subtitle'>{plan.title} · {planComposition}</Text>
       <View className='shop-hero'>
         <View>
-          <Text className='count'>{shopReady}<Text style={{ fontSize: '42rpx', color: '#78917d' }}> / {shopTotal}</Text></Text>
+          <Text className='count'><Text className='count-num'>{shopReady}</Text><Text className='count-total'> / {shopTotal}</Text></Text>
           <Text className='mini' style={{ color: '#64796c' }}>已备齐 · 含家中已有</Text>
           <View className='meter'><View style={{ width: `${shopTotal ? (shopReady / shopTotal * 100) : 0}%`, height: '100%', background: '#2d604e' }} /></View>
         </View>
@@ -572,7 +692,7 @@ export default function Index() {
         <Text>{isOwner ? '点状态格按 待购 → 家中已有 → 已购买 切换。' : '这份清单由掌勺者维护；你可以复制清单帮忙买菜。'}</Text>
       </View>
       <Button className='cta ghost' onClick={copyShopping}>复制待购清单</Button>
-      {isOwner && <Button className='linkline' onClick={() => setSheet('log')}>记录本次制作 →</Button>}
+      {isOwner && <Button className='linkline' onClick={openLog}>记录本次制作 →</Button>}
     </View>)}
 
     {/* ===== 我的 ===== */}
@@ -582,9 +702,9 @@ export default function Index() {
         <Text className='h2'>{session?.space?.name || (isDemoMode() ? '演示家庭' : '我的料理图鉴')}</Text>
         <Text className='subtitle'>{isOwner ? '掌勺者 · 管理菜谱与确认菜单' : '家庭成员 · 浏览菜谱与点菜'}</Text>
         <View className='profile-stat'>
-          <View><Text style={{ fontWeight: 700, fontSize: '44rpx' }}>{recipes.length}</Text><Text className='mini'>已收录菜谱</Text></View>
-          <View><Text style={{ fontWeight: 700, fontSize: '44rpx' }}>{store.favoriteIds.length}</Text><Text className='mini'>我的收藏</Text></View>
-          <View><Text style={{ fontWeight: 700, fontSize: '44rpx' }}>{store.cookingLogs.length}</Text><Text className='mini'>制作记录</Text></View>
+          <View><Text className='stat-num'>{recipes.length}</Text><Text className='stat-sub'>已收录菜谱</Text></View>
+          <View><Text className='stat-num'>{store.favoriteIds.length}</Text><Text className='stat-sub'>我的收藏</Text></View>
+          <View><Text className='stat-num'>{store.cookingLogs.length}</Text><Text className='stat-sub'>制作记录</Text></View>
         </View>
       </View>
       {isDemoMode() && <View className='panel' style={{ marginTop: '30rpx' }}>
@@ -597,7 +717,7 @@ export default function Index() {
       {session?.space.inviteCode && <View className='panel' style={{ marginTop: '30rpx' }}>
         <View className='panel-top'><Text>邀请家人</Text></View>
         <View className='recipe-row' onClick={() => Taro.setClipboardData({ data: session.space.inviteCode! })}>
-          <View className='copy'><Text style={{ fontWeight: 600, letterSpacing: '2rpx' }}>{session.space.inviteCode}</Text><Text className='mini'>点击复制邀请码</Text></View>
+          <View className='copy'><Text className='row-title'>{session.space.inviteCode}</Text><Text className='row-sub'>点击复制邀请码</Text></View>
           {!isH5 && <Button className='textbtn' openType='share'>分享</Button>}
         </View>
       </View>}
@@ -606,8 +726,8 @@ export default function Index() {
         {store.cookingLogs.slice(0, 10).map(l => {
           const r = recipes.find(x => x.id === l.recipeId)
           return <View className='recipe-row' key={l.id}>
-            <View className='copy'><Text style={{ fontWeight: 600 }}>{r?.title || '已删除菜谱'}</Text><Text className='mini'>{l.notes ? l.notes : '未填写心得'} · {l.cookedAt.slice(0, 10)}</Text></View>
-            <Text style={{ color: '#d99a3c' }}>{'★'.repeat(l.rating || 0)}</Text>
+            <View className='copy'><Text className='row-title'>{r?.title || '已删除菜谱'}</Text><Text className='row-sub'>{l.notes ? l.notes : '未填写心得'} · {l.cookedAt.slice(0, 10)}</Text></View>
+            {!!l.rating && <Text className='stars'>{'★'.repeat(l.rating)}</Text>}
           </View>
         })}
         {!store.cookingLogs.length && <Text className='mini'>做完一顿饭，可以在采购页记录本次制作。</Text>}
@@ -634,7 +754,7 @@ export default function Index() {
     {/* ===== 弹层：详情 ===== */}
     <Sheet open={sheet === 'detail'} label='菜谱详情' onClose={() => setSheet(null)}>
       {detailRecipe && <View>
-        <View className='dish-large'><Cover url={detailRecipe.coverUrl} /></View>
+        <View className='dish-large'><Cover url={detailRecipe.coverUrl} sample={detailRecipe.id ? isSampleCover(detailRecipe.id) : false} /></View>
         <View className='head-row'>
           <Text className='h2' style={{ fontSize: '48rpx' }}>{detailRecipe.title}</Text>
           <View className='iconbtn' onClick={() => toggleFavorite(detailRecipe.id)}>
@@ -671,19 +791,43 @@ export default function Index() {
         {CATS.map(c => <Text key={c} className={`chip ${browseCat === c ? 'on' : ''}`} onClick={() => setBrowseCat(c)}>{c}</Text>)}
       </View>
       {browseList.map(r => <View className='recipe-row' key={r.id}>
-        <View className='thumb'><Cover url={recipeWithCover(r).coverUrl} label='未上传照片' /></View>
+        <View className='thumb'><Cover url={recipeWithCover(r).coverUrl} label='未上传照片' sample={isSampleCover(r.id)} /></View>
         <View className='copy'>
-          <Text style={{ fontWeight: 600 }}>{r.title}</Text>
-          <Text className='mini'>{r.cookingMinutes} 分钟 · {r.category}</Text>
+          <Text className='row-title'>{r.title}</Text>
+          <Text className='row-sub'>{r.cookingMinutes} 分钟 · {r.category}</Text>
         </View>
         <View className='row-action' onClick={() => {
           if (browseMode === 'pick') {
             if (!chosen.includes(r.id)) { setChosen(c => [...c, r.id]); setPortions(p => ({ ...p, [r.id]: people })) }
+            addManualPick(r.id)
             setSheet(null); setTab('menu')
           } else { openDetail(recipeWithCover(r)) }
         }}><Text>›</Text></View>
       </View>)}
       {!browseList.length && <Text className='mini'>没有匹配的菜，换个词试试。</Text>}
+    </Sheet>
+
+    {/* ===== 弹层：主食选择 ===== */}
+    <Sheet open={sheet === 'staple'} label='选择主食' onClose={() => setSheet(null)}>
+      <Text className='h2' style={{ fontSize: '44rpx' }}>这一餐的主食</Text>
+      <Text className='subtitle'>米饭、馒头等配餐主食搭配菜肴；汤面、炒饭、饺子是一餐式主食，本身就是这餐主体。</Text>
+      <View className='staple-option' onClick={() => pickStaple('auto')}>
+        <View className='copy'><Text className='row-title'>自动搭配</Text><Text className='row-sub'>推荐时从图鉴主食中选择</Text></View>
+        <Text className={`radio ${!stapleOff && !stapleId ? 'on' : ''}`} />
+      </View>
+      {stapleRecipes.map(r => <View className='staple-option' key={r.id} onClick={() => pickStaple(r.id)}>
+        <View className='thumb'><Cover url={recipeWithCover(r).coverUrl} label='未上传照片' sample={isSampleCover(r.id)} /></View>
+        <View className='copy'>
+          <Text className='row-title'>{r.title}{wishIds.includes(r.id) ? ' · 家人点菜' : ''}</Text>
+          <Text className='row-sub'>{STAPLE_SIDE_LABEL[stapleKind(r)]} · 原配方 {r.servings} 人份</Text>
+        </View>
+        <Text className={`radio ${stapleId === r.id ? 'on' : ''}`} />
+      </View>)}
+      <View className='staple-option' onClick={() => pickStaple('off')}>
+        <View className='copy'><Text className='row-title'>本餐不安排主食</Text><Text className='row-sub'>推荐不再补主食</Text></View>
+        <Text className={`radio ${stapleOff ? 'on' : ''}`} />
+      </View>
+      {!stapleRecipes.length && <Text className='mini'>图鉴还没有主食菜谱，可先在图鉴录入（分类选「主食」）。</Text>}
     </Sheet>
 
     {/* ===== 弹层：录入（AI/手动） ===== */}
@@ -716,6 +860,8 @@ export default function Index() {
         <Textarea className='field area' placeholder='心得（可选）' value={mDesc} onInput={e => setMDesc(e.detail.value)} />
         <Button className='upload' onClick={chooseCover}><Icon name='camera' size={18} /> {aiPreview ? '已选成品照 · 重选' : '选择一张成品照'}</Button>
         {aiPreview ? <Image className='upload-preview' src={aiPreview} mode='aspectFill' /> : null}
+        {editId && aiPreview && coverAction === 'keep' && <Button className='linkline' onClick={clearCover}>移除现有成品照 →</Button>}
+        {coverAction === 'clear' && <Text className='helper'>保存后将移除原成品照。</Text>}
         <Button className='cta' onClick={saveRecipe} loading={busy}>{editId ? '保存修改' : '保存菜谱'}</Button>
         <Text className='helper'>不清楚的用量写「适量」，不要为了完整而猜数值。</Text>
       </View>}
@@ -724,23 +870,35 @@ export default function Index() {
     {/* ===== 弹层：掌勺者确认 ===== */}
     <Sheet open={sheet === 'review'} label='确认菜单' onClose={() => setSheet(null)}>
       <Text className='h2' style={{ fontSize: '44rpx' }}>确认菜单</Text>
-      <Text className='subtitle'>{people} 人 · {chosen.length} 道菜 · {meal === 'dinner' ? '晚餐' : '午餐'}</Text>
+      <Text className='subtitle'>{people} 人 · {chosenComposition} · {meal === 'dinner' ? '晚餐' : '午餐'}</Text>
       {chosenRecipes.map(r => <View className='recipe-row' key={r.id}>
-        <View className='thumb'><Cover url={recipeWithCover(r).coverUrl} label='未上传照片' /></View>
+        <View className='thumb'><Cover url={recipeWithCover(r).coverUrl} label='未上传照片' sample={isSampleCover(r.id)} /></View>
         <View className='copy'>
-          <Text style={{ fontWeight: 600 }}>{r.title}</Text>
-          <Text className='mini'>原配方 {r.servings || 2} 人份</Text>
+          <Text className='row-title'>{r.title}</Text>
+          <Text className='row-sub'>原配方 {r.servings || 2} 人份 · 计划</Text>
         </View>
         <Input className='portion-input' type='number' value={String(portions[r.id] ?? people)} onInput={e => setPortions(p => ({ ...p, [r.id]: Math.max(1, Number(e.detail.value) || 1) }))} />
         <View className='row-action' onClick={() => setChosen(c => c.filter(x => x !== r.id))}><Text>✕</Text></View>
       </View>)}
-      <View className='tip'>人数不等于每道菜的份量；按实际要做的份量算，未知用量标待核对。</View>
+      <View className='tip'>人数不等于每道菜的份量；按每道菜实际要做的计划份数算，未知用量标待核对。</View>
       <Button className='cta' onClick={confirmPlan} loading={busy}>确认菜单，生成采购清单 →</Button>
     </Sheet>
 
     {/* ===== 弹层：记录制作 ===== */}
     <Sheet open={sheet === 'log'} label='制作记录' onClose={() => setSheet(null)}>
       <Text className='h2' style={{ fontSize: '44rpx' }}>记录本次制作</Text>
+      <Text className='subtitle'>勾选这次实际做过的菜；评分可选，不打也可以。</Text>
+      <View className='panel' style={{ marginTop: '20rpx', padding: '10rpx 26rpx' }}>
+        {plan?.items.map(i => { const id = i.recipeId!; return <View className='recipe-row' key={id} onClick={() =>
+          setLogDishIds(v => v.includes(id) ? v.filter(x => x !== id) : [...v, id])}>
+          <View className={`check ${logDishIds.includes(id) ? 'done' : ''}`}>{logDishIds.includes(id) && <Text>✓</Text>}</View>
+          <View className='copy'><Text className='row-title'>{i.recipeTitle}</Text><Text className='row-sub'>计划 {i.plannedServings || plan.servings} 人份</Text></View>
+        </View> })}
+      </View>
+      <View className='star-row'>
+        <Text className='mini' style={{ marginRight: '16rpx' }}>评分（可选）</Text>
+        {[1, 2, 3, 4, 5].map(n => <Text key={n} className={`star ${logRating >= n ? 'on' : ''}`} onClick={() => setLogRating(v => v === n ? 0 : n)}>★</Text>)}
+      </View>
       <Textarea className='field area' placeholder='火候、调味、家人的评价……' value={logNotes} onInput={e => setLogNotes(e.detail.value)} />
       <Button className='cta' onClick={saveLog} loading={busy}>保存制作记录</Button>
     </Sheet>

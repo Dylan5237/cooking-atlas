@@ -20,7 +20,7 @@ export default defineConfig({
     staticDirectory: 'static',
     router: { mode: 'hash' },
     esnextModules: ['@cooking-atlas'],
-    devServer: { client: { overlay: { errors: true, warnings: false } } },
+    devServer: { port: 10086, client: { overlay: { errors: true, warnings: false } } },
     compile: {
       include: [
         path.resolve(__dirname, '../../../packages'),
