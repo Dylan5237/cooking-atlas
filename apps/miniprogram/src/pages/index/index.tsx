@@ -149,6 +149,14 @@ export default function Index() {
     return () => { cancelled = true }
   }, [recipes])
 
+  /* 切 tab 时拉最新数据：点菜请求只在会话建立时拉一次，家人在另一台手机提交后
+     掌勺者不重开页面就永远看不到；基础数据（菜谱/菜单/采购）同理 */
+  useEffect(() => {
+    if (!session) return
+    repository.refresh().then(refresh).catch(() => {})
+    if (session.role === 'owner') repository.refreshRequests().then(refresh).catch(() => {})
+  }, [tab, session])
+
   const recipeWithCover = (r: Recipe): Recipe =>
     r.coverKey && covers[r.coverKey] ? { ...r, coverUrl: covers[r.coverKey] } : r
 

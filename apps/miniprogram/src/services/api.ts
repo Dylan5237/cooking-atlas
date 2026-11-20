@@ -1,7 +1,9 @@
 import Taro from '@tarojs/taro'
 const TOKEN_KEY='cooking-atlas-access-token'
 const SPACE_KEY='cooking-atlas-active-space'
-const BASE=(process.env.TARO_APP_API_BASE_URL||'http://127.0.0.1:3001').replace(/\/$/,'')
+// TARO_APP_API_BASE_URL 显式设为空串 = 同源相对路径（H5 与 API 同一虚拟主机部署）；
+// 未设置（本地开发）才回退本地 API 地址
+const BASE=(process.env.TARO_APP_API_BASE_URL??'http://127.0.0.1:3001').replace(/\/$/,'')
 export type ApiMethod='GET'|'POST'|'PUT'|'PATCH'|'DELETE'
 export function getAccessToken(){return Taro.getStorageSync(TOKEN_KEY)||''}
 export function clearAccessToken(){Taro.removeStorageSync(TOKEN_KEY)}
@@ -103,8 +105,19 @@ export async function transcribeAudio(audioKey:string,spaceId=getActiveSpaceId()
 }
 
 export async function resolveImageUrl(key:string,spaceId=getActiveSpaceId()){
+ // H5：<img> 带不了 Authorization，且对象存储签名 URL 的主机是内网名（minio:9000）浏览器不可达
+ // —— 直接走同源 /api/uploads/content 用 Bearer 取 blob URL；weapp 维持签名 URL
+ if(process.env.TARO_ENV==='h5')return await fetchObjectBlobUrlH5(key,spaceId)
  const result=await apiRequest<{url:string}>('/api/uploads/read-url?spaceId='+encodeURIComponent(spaceId)+'&key='+encodeURIComponent(key))
  return result.url
+}
+
+/** H5 经 /api/uploads/content 取对象并转 blob URL：<img> 直接可用（页面会话内存活） */
+export async function fetchObjectBlobUrlH5(key:string,spaceId=getActiveSpaceId()):Promise<string>{
+ const token=getAccessToken()
+ const res=await fetch(BASE+'/api/uploads/content?spaceId='+encodeURIComponent(spaceId)+'&key='+encodeURIComponent(key),{headers:token?{Authorization:'Bearer '+token}:{}})
+ if(!res.ok)throw new Error('CONTENT_DOWNLOAD_FAILED_'+res.status)
+ return URL.createObjectURL(await res.blob())
 }
 
 export type SpaceMembership={id:string;role:'owner'|'member';status:string;space:{id:string;name:string;ownerId:string}}
