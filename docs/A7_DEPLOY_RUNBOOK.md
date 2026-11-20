@@ -1,9 +1,34 @@
 # A7 生产部署与真机验收 Runbook
 
-> 状态：**BLOCKED** —— 前端/后端代码就绪，卡在外部凭据与备案域名。下文每一步都可执行，缺项已标注。
+> 状态：**H5 已部署上线（2026-11-20）** —— 无备案域名，公网 HTTPS 阻塞；家人走 HTTP 试用入口（用户已知情选择），
+> 掌勺者可走 tailscale HTTPS 入口。部署分支 `feat/h5-deploy`（基线 367afa7），证据见 `shots/h5-cvm/`。
 > 纪律：不使用演示数据冒充验收通过；每一步的产出都要留可复核证据。
 
-## 0. 无域名试用（当前可用，2026-11-16 实跑通过）
+## 0. 当前入口与状态（2026-11-20 实测）
+
+| 项 | 值 |
+| --- | --- |
+| 家人入口（手机直接打开） | `http://43.139.159.100.nip.io`（明文 HTTP，仅限家庭试用；用户已知悉） |
+| 掌勺者 HTTPS 入口 | `https://review-svc.tail16fd19.ts.net:8443`（tailnet 内可达；需设备装 Tailscale 并加入 tailnet） |
+| 试用码 | 已轮换（旧码 `atlas-a4755a` 因仓库公开泄露已 403；新码只线下告知，不入库/不入 issue） |
+| 公网 HTTPS 阻塞项 | 无备案域名；公网 443 被 brainstormtool（IP 证书）占用。需先备案域名 + DNS + certbot，见 §2 |
+| AI / STT | `deploy/.env` 中 AI_* / STT_* 均为空占位 → 界面 503 降级手动录入并明确提示（实测 AI_PROVIDER_NOT_CONFIGURED） |
+
+**部署布局**：静态 `/var/www/cooking-atlas-h5`（由 `deploy/deploy-h5.sh` 构建上传）；nginx：
+`/etc/nginx/cooking-atlas/h5-locations.conf`（共用 location 片段：SPA try_files + /api 反代 + 试用码限流），
+trial vhost（80，nip.io）与 `cooking-atlas-h5` vhost（127.0.0.1:8090，供 tailscale serve 8443 反代）都 include 它；
+限流 zone 在 `/etc/nginx/conf.d/cooking-atlas-h5.conf`（10r/m burst 10，实测 10×403 → 429 → 503）。
+`tailscale serve --bg --https=8443 http://127.0.0.1:8090`；原 443 → 8765 服务未动，配置备份在 `/home/ubuntu/ts-serve-backup-*.json`。
+
+**备份（每日 cron，iris-deploy）**：03:20 `backup-restore-drill.sh`（pg_dump + scratch 还原比对，实测 RESULT: PASS，
+9 表行数一致）；03:40 `backup-photos.sh`（mc mirror MinIO bucket → `~/backups/photos`，实测 32 对象镜像成功）。
+缺项：异地副本（机器级故障会同失）——建议后续 rsync 到另一节点或 mc mirror 到独立对象存储，需用户提供目标。
+
+**已知未做项**：H5 浏览器录音/STT（无 STT 密钥，语音入口 503 提示手动）；制作记录暂无照片入口（后端 photos 字段就绪，
+UI `saveLog` 固定空数组）；家人点菜后掌勺者端已改为切 tab 自动拉最新（原只在会话建立时拉一次，见 feat(h5) 提交）。
+
+## 0.9 历史记录（2026-11-16 小程序试用，已被 H5 入口取代）
+
 
 **适用**：微信开发者工具 / 预览 / 真机调试（必须开调试模式）。**不适用**：体验版与正式版（微信强制备案域名 + HTTPS）。
 
