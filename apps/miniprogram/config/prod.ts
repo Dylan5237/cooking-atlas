@@ -1,0 +1,1 @@
+import base from './index'; export default {...base,mode:'production'}

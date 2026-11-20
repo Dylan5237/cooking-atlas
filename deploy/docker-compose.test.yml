@@ -1,0 +1,9 @@
+# 契约测试覆盖层：仅在联调/验收期间叠加使用，结束后移除并重建 api 容器。
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.cvm.yml -f deploy/docker-compose.test.yml --env-file deploy/.env up -d api
+# 注意：AUTH_TEST_MODE 开启时 NODE_ENV 必须非 production（代码强制），此文件将 api 置为 development。
+services:
+  api:
+    environment:
+      NODE_ENV: development
+      AUTH_TEST_MODE: "true"
+      AUTH_TEST_SECRET: ${AUTH_TEST_SECRET:?set AUTH_TEST_SECRET in deploy/.env}

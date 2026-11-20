@@ -1,0 +1,1 @@
+import{describe,it,expect}from'vitest';import{normalizeIngredientName,normalizeRecipe}from'./index';describe('recipe engine',()=>{it('normalizes aliases',()=>expect(normalizeIngredientName('西红柿')).toBe('番茄'));it('rejects empty title',()=>expect(()=>normalizeRecipe({}, {id:'1',spaceId:'s',createdBy:'u'})).toThrow('菜名不能为空'))})
